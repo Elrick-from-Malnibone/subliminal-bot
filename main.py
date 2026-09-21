@@ -1,0 +1,652 @@
+# main.py
+import asyncio
+import logging
+import os
+import time
+import random
+
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.filters import CommandStart
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from utils.db import init_db, add_user, log_generation, get_stats, can_use_custom_topic, mark_custom_topic_used
+from config import BOT_TOKEN, ADMIN_ID
+from states.fsm import SubliminalStates
+from keyboards.inline import (
+    topics_keyboard,
+    voices_keyboard,
+    categories_keyboard,
+    affirmation_keyboard,
+)
+from keyboards.inline import (
+    topics_keyboard,
+    voices_keyboard,
+    categories_keyboard,
+    affirmation_keyboard,
+    lengths_keyboard,
+)
+
+from keyboards.inline import (
+    topics_keyboard,
+    voices_keyboard,
+    categories_keyboard,
+    affirmation_keyboard,
+    lengths_keyboard,
+    publish_keyboard,
+    publish_type_keyboard,
+)
+
+from services.affirmations import get_affirmation, last_source
+from services.tts import generate_voice
+from services.deepseek import generate_affirmation
+from services.audio import create_subliminal
+
+logging.basicConfig(level=logging.INFO)
+PROXY = "socks5://127.0.0.1:10808"
+
+session = AiohttpSession(proxy=PROXY)
+bot = Bot(token=BOT_TOKEN, session=session)
+dp = Dispatcher()
+
+
+TOPICS = {
+    "topic_money": {"key": "money", "text": "деньги, богатство, изобилие"},
+    "topic_love": {"key": "love", "text": "любовь, отношения, притяжение партнёра"},
+    "topic_health": {"key": "health", "text": "здоровье, энергия, хорошее самочувствие"},
+    "topic_career": {"key": "career", "text": "карьера, успех, реализация в работе"},
+    "topic_confidence": {"key": "confidence", "text": "уверенность в себе, сила, харизма"},
+    "topic_calm": {"key": "calm", "text": "спокойствие, внутренний баланс, умиротворение"},
+    "topic_weight": {"key": "weight", "text": "похудение, стройность, здоровое тело"},
+    "topic_motivation": {"key": "motivation", "text": "мотивация, энергия, драйв, действие"},
+    "topic_luck": {"key": "luck", "text": "удача, везение, благоприятные возможности"},
+    "topic_magnetism": {"key": "magnetism", "text": "магнетизм, притяжение людей, обаяние"},
+}
+
+
+
+@dp.message(CommandStart())
+async def cmd_start(message: types.Message, state):
+    await state.clear()
+
+    # Проверяем, новый ли юзер
+    is_new = add_user(message.from_user.id, message.from_user.username or "")
+
+    if is_new:
+        # Оповещаем админа
+        try:
+            await bot.send_message(
+                ADMIN_ID,
+                f"🆕 Новый юзер: @{message.from_user.username or 'без_юзернейма'}\n"
+                f"ID: {message.from_user.id}"
+            )
+        except Exception as e:
+            print(f"Не удалось отправить оповещение: {e}")
+
+    await message.answer(
+        "Привет! Выбери тему саблиминала:",
+        reply_markup=topics_keyboard()
+    )
+    await state.set_state(SubliminalStates.waiting_for_topic)
+
+@dp.message(F.text == "/stats")
+async def cmd_stats(message: types.Message):
+    # Только для админа
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    stats = get_stats()
+
+    await message.answer(
+        f"📊 <b>Статистика бота</b>\n\n"
+        f"👥 Всего юзеров: <b>{stats['total_users']}</b>\n"
+        f"🎧 Сгенерировано саблиминалов: <b>{stats['total_generations']}</b>\n\n"
+        f"📦 Из пула: <b>{stats['from_pool']}</b>\n"
+        f"🔧 Из строк: <b>{stats['from_strings']}</b>\n"
+        f"🤖 Из Дипсика: <b>{stats['from_deepseek']}</b>",
+        parse_mode="HTML"
+    )    
+
+
+@dp.callback_query(SubliminalStates.waiting_for_topic, F.data.in_(TOPICS.keys()))
+async def handle_topic(call: types.CallbackQuery, state):
+    topic_data = TOPICS[call.data]
+    await state.update_data(topic=topic_data["text"], topic_key=topic_data["key"])
+    await call.message.edit_text(f"Тема: {topic_data['text']}")
+    await call.answer()
+    await ask_affirmation(call.message, state)
+
+
+@dp.callback_query(SubliminalStates.waiting_for_topic, F.data == "topic_custom")
+async def handle_custom(call: types.CallbackQuery, state):
+    await call.message.edit_text("Напиши, какой саблиминал ты хочешь:")
+    await call.answer()
+    await state.set_state(SubliminalStates.waiting_for_custom_text)
+
+@dp.callback_query(SubliminalStates.waiting_for_topic, F.data == "topic_custom_topic")
+async def handle_custom_topic(call: types.CallbackQuery, state):
+    # Проверяем лимит
+    if not can_use_custom_topic(call.from_user.id):
+        await call.message.edit_text(
+            "❌ Лимит на «Свою тему» исчерпан.\n\n"
+            "Можно использовать только 1 раз в день.\n"
+            "Попробуй завтра или выбери готовую тему."
+        )
+        await call.answer()
+        return
+
+    await call.message.edit_text(
+        "🎯 Напиши свою тему — то, чего нет в готовом списке.\n\n"
+        "Например:\n"
+        "• хочу сдать экзамен\n"
+        "• хочу наладить сон\n"
+        "• хочу найти своё дело\n\n"
+        "Нейронка сгенерирует аффирмации под твой запрос."
+    )
+    await call.answer()
+    await state.set_state(SubliminalStates.waiting_for_custom_topic)
+
+@dp.message(SubliminalStates.waiting_for_custom_topic)
+async def handle_custom_topic_text(message: types.Message, state):
+    # Проверяем лимит
+    if not can_use_custom_topic(message.from_user.id):
+        await message.answer(
+            "❌ Лимит на «Свою тему» исчерпан.\n\n"
+            "Можно использовать только 1 раз в день.\n"
+            "Попробуй завтра или выбери готовую тему."
+        )
+        await state.clear()
+        return
+
+    # Проверяем длину
+    if len(message.text) > 500:
+        await message.answer(
+            f"❌ Слишком длинный запрос ({len(message.text)} символов).\n\n"
+            "Максимум — 500 символов. Опиши тему коротко."
+        )
+        return
+
+    user_topic = message.text
+    await state.update_data(topic=user_topic)
+
+    mark_custom_topic_used(message.from_user.id)
+
+    status = await message.answer("⏳ Генерирую аффирмации под твой запрос...")
+
+    affirmation = await asyncio.to_thread(generate_affirmation, user_topic)
+    await state.update_data(affirmation=affirmation)
+
+    await status.edit_text(
+        f"Вот что сгенерировалось:\n\n{affirmation}\n\n"
+        f"Теперь выбери голос:",
+        reply_markup=voices_keyboard()
+    )
+    await state.set_state(SubliminalStates.choosing_voice)
+
+@dp.message(SubliminalStates.waiting_for_custom_text)
+async def handle_custom_text(message: types.Message, state):
+    # Сохраняем текст юзера КАК ГОТОВЫЕ АФФИРМАЦИИ
+    await state.update_data(affirmation=message.text)
+
+    await message.answer(
+        "✅ Текст принят. Теперь выбери голос:",
+        reply_markup=voices_keyboard()
+    )
+    await state.set_state(SubliminalStates.choosing_voice)
+
+
+async def ask_affirmation(message: types.Message, state):
+    """Генерирует аффирмации и показывает кнопки Перегенерить / Подходит."""
+    data = await state.get_data()
+    topic = data.get("topic", "успех")
+    topic_key = data.get("topic_key")
+
+    status = await message.answer("⏳ Генерирую аффирмации...")
+
+    
+    delay = random.uniform(2.0, 4.0)
+    await asyncio.sleep(delay)
+
+    affirmation = await asyncio.to_thread(get_affirmation, topic_key, topic)
+    await state.update_data(affirmation=affirmation)
+
+    await status.edit_text(
+        f"Вот что сгенерировалось:\n\n{affirmation}\n\n"
+        f"Подходит или перегенерить?",
+        reply_markup=affirmation_keyboard()
+    )
+
+@dp.callback_query(F.data == "affirm_regen")
+async def handle_regen(call: types.CallbackQuery, state):
+    """Перегенерировать текст с имитацией работы нейронки."""
+
+    data = await state.get_data()
+    topic = data.get("topic", "успех")
+    topic_key = data.get("topic_key")
+
+    await call.message.edit_text("⏳ Генерирую новый текст...")
+    await call.answer()
+
+    
+    delay = random.uniform(2.0, 4.0)
+    await asyncio.sleep(delay)
+
+    affirmation = await asyncio.to_thread(get_affirmation, topic_key, topic)
+    await state.update_data(affirmation=affirmation)
+
+    await call.message.edit_text(
+        f"Вот что сгенерировалось:\n\n{affirmation}\n\n"
+        f"Подходит или перегенерить?",
+        reply_markup=affirmation_keyboard()
+    )
+
+
+@dp.callback_query(F.data == "affirm_ok")
+async def handle_ok(call: types.CallbackQuery, state):
+    """Юзер подтвердил текст — идём к выбору голоса."""
+    await call.message.edit_text(
+        "✅ Принято. Теперь выбери голос:",
+        reply_markup=voices_keyboard()
+    )
+    await call.answer()
+    await state.set_state(SubliminalStates.choosing_voice)    
+
+
+
+@dp.callback_query(SubliminalStates.choosing_voice, F.data.startswith("voice_"))
+async def handle_voice(call: types.CallbackQuery, state):
+    voice_type = call.data.replace("voice_", "")  # male_1, female_2, robot
+    await state.update_data(voice_type=voice_type)
+
+    await call.message.edit_text(
+        "✅ Голос выбран. Теперь выбери категорию трека:",
+        reply_markup=categories_keyboard()
+    )
+    await call.answer()
+    await state.set_state(SubliminalStates.choosing_track)    
+
+@dp.callback_query(SubliminalStates.choosing_track, F.data.startswith("cat_"))
+async def handle_category(call: types.CallbackQuery, state):
+    category = call.data.replace("cat_", "")  # ambient, deephouse, lofi, nature, custom
+    await state.update_data(category=category)
+
+    # Если юзер выбрал свой трек
+    if category == "custom":
+        await call.message.edit_text("📁 Отправь свой MP3-файл:")
+        await call.answer()
+        await state.set_state(SubliminalStates.choosing_track_item)
+        return
+
+    # Папка с полными треками
+    category_dir = os.path.join("assets", category)
+
+    # Папка с готовыми превью
+    preview_dir = os.path.join("assets", "previews", category)
+
+    if not os.path.isdir(category_dir):
+        await call.message.edit_text("Нет такой категории.")
+        await call.answer()
+        return
+
+    tracks = sorted([f for f in os.listdir(category_dir) if f.lower().endswith(".mp3")])
+
+    if not tracks:
+        await call.message.edit_text("В этой категории нет треков.")
+        await call.answer()
+        return
+
+            # 1. Отправляем готовые превью ПАРАЛЛЕЛЬНО
+    await call.message.edit_text("🎧 Слушай превью и выбирай:")
+    await call.answer()
+
+    tasks = []
+    for track in tracks:
+        preview_path = os.path.join(preview_dir, track)
+
+        if os.path.exists(preview_path):
+            audio_file = FSInputFile(preview_path)
+            # Оборачиваем в bot.send_audio — это даёт корутину
+            tasks.append(bot.send_audio(
+                chat_id=call.message.chat.id,
+                audio=audio_file,
+                title=track.replace(".mp3", "")
+            ))
+        else:
+            print(f"Нет превью для {track}")
+
+    if tasks:
+        await asyncio.gather(*tasks)
+
+    # 2. Клавиатура с выбором
+    buttons = [
+        [InlineKeyboardButton(
+            text=f"🎵 {track.replace('.mp3', '')}",
+            callback_data=f"track_{track}"
+        )]
+        for track in tracks
+    ]
+
+    buttons.append([
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_category")
+    ])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    await call.message.answer(
+        "Выбери трек:",
+        reply_markup=keyboard
+    )
+    await state.set_state(SubliminalStates.choosing_track_item)
+
+
+@dp.callback_query(F.data == "back_to_topic")
+async def back_to_topic(call: types.CallbackQuery, state):
+    await state.clear()
+    await call.message.edit_text(
+        "Выбери тему саблиминала:",
+        reply_markup=topics_keyboard()
+    )
+    await call.answer()
+    await state.set_state(SubliminalStates.waiting_for_topic)
+
+
+@dp.callback_query(F.data == "back_to_voice")
+async def back_to_voice(call: types.CallbackQuery, state):
+    await call.message.edit_text(
+        "Выбери голос:",
+        reply_markup=voices_keyboard()
+    )
+    await call.answer()
+    await state.set_state(SubliminalStates.choosing_voice)
+
+
+@dp.callback_query(F.data == "back_to_category")
+async def back_to_category(call: types.CallbackQuery, state):
+    await call.message.edit_text(
+        "Выбери категорию трека:",
+        reply_markup=categories_keyboard()
+    )
+    await call.answer()
+    await state.set_state(SubliminalStates.choosing_track)    
+
+@dp.callback_query(SubliminalStates.choosing_track_item, F.data.startswith("track_"))
+async def handle_track_choice(call: types.CallbackQuery, state):
+    track_name = call.data.replace("track_", "")
+    await state.update_data(chosen_track=track_name)
+
+    await call.message.edit_text(
+        f"✅ Трек: {track_name}.\n\n"
+        f"🕐 Выбери длину саблиминала:",
+        reply_markup=lengths_keyboard()
+    )
+    await call.answer()
+    await state.set_state(SubliminalStates.choosing_length)
+
+@dp.message(SubliminalStates.choosing_track_item, F.audio | F.document)
+async def handle_custom_track(message: types.Message, state):
+    # Проверяем, что это аудио или документ с mp3
+    file = message.audio or message.document
+
+    if not file:
+        await message.answer("Пришли MP3-файл.")
+        return
+
+    # Проверяем расширение (если документ)
+    if message.document and not message.document.file_name.lower().endswith(".mp3"):
+        await message.answer("Нужен именно MP3-файл.")
+        return
+
+    # Скачиваем файл
+    file_info = await bot.get_file(file.file_id)
+    os.makedirs("assets/user", exist_ok=True)
+    user_track_path = f"assets/user/{message.from_user.id}_{int(time.time())}.mp3"
+    await bot.download_file(file_info.file_path, user_track_path)
+
+    await state.update_data(custom_track=user_track_path)
+    await message.answer(
+        "✅ Трек принят.\n\n"
+        "🕐 Выбери длину саблиминала:",
+        reply_markup=lengths_keyboard()
+    )
+    await state.set_state(SubliminalStates.choosing_length)
+
+@dp.callback_query(SubliminalStates.choosing_length, F.data.startswith("len_"))
+async def handle_length(call: types.CallbackQuery, state):
+    # Определяем длину
+    length_code = call.data.replace("len_", "")
+
+    if length_code == "5":
+        length_minutes = 5
+    elif length_code == "10":
+        length_minutes = 10
+    elif length_code == "30":
+        length_minutes = 30
+    else:  # len_track
+        length_minutes = None  # по длине трека
+
+    await state.update_data(length_minutes=length_minutes)
+
+    # Формируем текст
+    if length_minutes:
+        length_text = f"{length_minutes} минут"
+    else:
+        length_text = "по длине трека"
+
+    await call.message.edit_text(
+        f"✅ Длина: {length_text}.\n\n"
+        f"✍️ Напиши название для своего саблиминала:"
+    )
+    await call.answer()
+    await state.set_state(SubliminalStates.waiting_for_name)
+
+@dp.message(SubliminalStates.waiting_for_name)
+async def handle_name(message: types.Message, state):
+    # Сохраняем название, которое дал юзер
+    await state.update_data(subliminal_name=message.text)
+
+    await message.answer(
+        f"✅ Название: «{message.text}».\n\nСобираю саблиминал..."
+    )
+    await generate_subliminal(message, state)    
+
+async def generate_subliminal(message: types.Message, state):
+    data = await state.get_data()
+    affirmation = data.get("affirmation")
+    voice_type = data.get("voice_type", "male_1")
+    category = data.get("category", "nature")
+    custom_track = data.get("custom_track")
+    length_minutes = data.get("length_minutes")
+
+    if not affirmation:
+        await message.answer("Что-то пошло не так. Начни заново — /start")
+        await state.clear()
+        return
+
+    status = await message.answer("⏳ Озвучиваю...")
+
+    # 1. Озвучка
+    voice_path = await generate_voice(affirmation, voice_type=voice_type)
+
+    if not voice_path:
+        await status.edit_text("❌ Не удалось создать озвучку.")
+        await state.clear()
+        return
+
+    # Отправляем голосовое
+    voice_file = FSInputFile(voice_path)
+    await message.answer_voice(voice=voice_file)
+
+    await status.edit_text("⏳ Собираю саблиминал...")
+
+    # 2. Саблиминал — свой трек или из категории
+    chosen_track = data.get("chosen_track")
+
+    if custom_track:
+        subliminal_path = await asyncio.to_thread(
+            create_subliminal, voice_path, None, custom_track, length_minutes
+        )
+    elif chosen_track:
+        track_path = os.path.join("assets", category, chosen_track)
+        subliminal_path = await asyncio.to_thread(
+            create_subliminal, voice_path, None, track_path, length_minutes
+        )
+    else:
+        subliminal_path = await asyncio.to_thread(
+            create_subliminal, voice_path, category, None, length_minutes
+        )
+
+                 # 3. Отправка
+    if subliminal_path and os.path.exists(subliminal_path):
+        audio_file = FSInputFile(subliminal_path)
+        subliminal_name = data.get("subliminal_name", "Твой саблиминал")
+        await message.answer_audio(
+            audio=audio_file,
+            title=subliminal_name,
+            caption="🎧 Сделано в @SubliminalGenBot"
+        )
+        await status.edit_text("✅ Готово!")
+
+        # Логируем генерацию
+        log_generation(message.from_user.id, last_source)
+
+        # Сохраняем путь к саблиминалу в state — для публикации
+        await state.update_data(subliminal_path=subliminal_path)
+
+        # Спрашиваем про публикацию
+        await message.answer(
+            "📢 Хочешь опубликовать свой саблиминал в канале?",
+            reply_markup=publish_keyboard()
+        )
+        return  # ← ВАЖНО: не удаляем файл, он ещё нужен для публикации
+    else:
+        await status.edit_text("❌ Не удалось собрать саблиминал.")
+
+        # 4. Чистка — удаляем только голосовой файл
+    if voice_path and os.path.exists(voice_path):
+        os.remove(voice_path)
+
+    # Файл саблиминала НЕ удаляем — он нужен для публикации
+
+@dp.callback_query(F.data == "publish_no")
+async def handle_publish_no(call: types.CallbackQuery, state):
+    """Юзер отказался от публикации — чистим и сбрасываем."""
+    data = await state.get_data()
+    subliminal_path = data.get("subliminal_path")
+    custom_track = data.get("custom_track")
+
+    # Чистим файлы
+    if subliminal_path and os.path.exists(subliminal_path):
+        os.remove(subliminal_path)
+    if custom_track and os.path.exists(custom_track):
+        os.remove(custom_track)
+
+    await call.message.edit_text("Ок, не публикуем. Хочешь ещё один?")
+    await call.answer()
+
+    # Сброс
+    await state.clear()
+    await call.message.answer(
+        "Выбери тему:",
+        reply_markup=topics_keyboard()
+    )
+    await state.set_state(SubliminalStates.waiting_for_topic)
+
+
+@dp.callback_query(F.data == "publish_yes")
+async def handle_publish_yes(call: types.CallbackQuery, state):
+    """Юзер хочет опубликовать — спрашиваем анонимно или от имени."""
+    await call.message.edit_text(
+        "Как опубликовать?",
+        reply_markup=publish_type_keyboard()
+    )
+    await call.answer()
+
+
+@dp.callback_query(F.data == "pub_anon")
+async def handle_pub_anon(call: types.CallbackQuery, state):
+    """Публикуем анонимно."""
+    await publish_subliminal(call, state, anonymous=True)
+
+
+@dp.callback_query(F.data == "pub_named")
+async def handle_pub_named(call: types.CallbackQuery, state):
+    """Публикуем от имени юзера."""
+    await publish_subliminal(call, state, anonymous=False)
+
+
+async def publish_subliminal(call: types.CallbackQuery, state, anonymous: bool):
+    """Публикует саблиминал в канал."""
+    from config import CHANNEL_ID
+
+    data = await state.get_data()
+    subliminal_path = data.get("subliminal_path")
+    subliminal_name = data.get("subliminal_name", "Саблиминал")
+    custom_track = data.get("custom_track")
+
+    if not subliminal_path or not os.path.exists(subliminal_path):
+        await call.message.edit_text("❌ Файл потерялся. Начни заново — /start")
+        await call.answer()
+        await state.clear()
+        return
+
+    try:
+                # Формируем подпись
+        if anonymous:
+            caption = f"🎧 {subliminal_name}\n\n🕶 Анонимно"
+        else:
+            username = call.from_user.username
+            if username:
+                caption = f"🎧 {subliminal_name}\n\n👤 @{username}"
+            else:
+                caption = f"🎧 {subliminal_name}\n\n👤 {call.from_user.full_name}"
+
+        # Добавляем подпись бота
+        caption += "\n\n🤖 Сделано в @SubliminalGenBot"
+
+        # Отправляем в канал
+        audio_file = FSInputFile(subliminal_path)
+        await bot.send_audio(
+            chat_id=CHANNEL_ID,
+            audio=audio_file,
+            title=subliminal_name,
+            caption=caption
+        )
+
+        await call.message.edit_text("✅ Опубликовано в канале!")
+        await call.answer()
+
+    except Exception as e:
+        print(f"Ошибка публикации: {e}")
+        await call.message.edit_text("❌ Не удалось опубликовать. Попробуй позже.")
+        await call.answer()
+
+    # Чистка файлов
+    if subliminal_path and os.path.exists(subliminal_path):
+        os.remove(subliminal_path)
+    if custom_track and os.path.exists(custom_track):
+        os.remove(custom_track)
+
+    # Сброс
+    await state.clear()
+    await call.message.answer(
+        "Хочешь ещё один?",
+        reply_markup=topics_keyboard()
+    )
+    await state.set_state(SubliminalStates.waiting_for_topic)    
+
+@dp.callback_query(F.data == "back_to_publish")
+async def back_to_publish(call: types.CallbackQuery, state):
+    """Возврат к вопросу 'публиковать или нет'."""
+    await call.message.edit_text(
+        "📢 Хочешь опубликовать свой саблиминал в канале?",
+        reply_markup=publish_keyboard()
+    )
+    await call.answer()    
+
+async def main():
+    init_db()
+    print("Бот запущен. Нажми Ctrl+C для остановки.")
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

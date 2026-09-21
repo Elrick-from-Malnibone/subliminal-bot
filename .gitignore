@@ -1,0 +1,34 @@
+.env
+__pycache__/
+*.pyc
+
+# Ключи
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+env/
+
+# База данных
+bot.db
+*.db
+
+# Временные файлы
+audio/
+output/
+assets/user/
+
+# Превью (если хочешь не коммитить)
+assets/previews/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,8 @@
+aiogram
+aiohttp-socks
+requests
+python-dotenv
+edge-tts
+pydub
+numpy
+pedalboard
