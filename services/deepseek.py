@@ -26,7 +26,6 @@ def generate_affirmation(user_text):
     :return: str — готовые аффирмации или сообщение об ошибке
     """
 
-    # Формируем тело запроса к API
     payload = {
         "model": DEEPSEEK_MODEL,
         "messages": [
@@ -34,7 +33,8 @@ def generate_affirmation(user_text):
             {"role": "user", "content": user_text}
         ],
         "temperature": 1.0,
-        "max_tokens": 1500
+        "max_tokens": 1500,
+        "thinking": {"type": "disabled"}
     }
 
     # Заголовки с ключом авторизации

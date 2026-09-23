@@ -112,3 +112,25 @@ def publish_type_keyboard():
             InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_publish"),
         ],
     ])
+
+def solfeggio_keyboard():
+    """Клавиатура выбора сольфеджио-частоты."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="528 Гц — любовь и исцеление", callback_data="sol_528")],
+        [InlineKeyboardButton(text="432 Гц — гармония и баланс", callback_data="sol_432")],
+        [InlineKeyboardButton(text="888 Гц — изобилие и деньги", callback_data="sol_888")],
+        [InlineKeyboardButton(text="396 Гц — свобода от страха", callback_data="sol_396")],
+        [InlineKeyboardButton(text="174 Гц — безопасность и покой", callback_data="sol_174")],
+        [InlineKeyboardButton(text="Без частоты", callback_data="sol_none")],
+    ])
+
+
+def binaural_keyboard():
+    """Клавиатура выбора бинаурального ритма."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Альфа 10 Гц — расслабление и творчество", callback_data="bin_alpha")],
+        [InlineKeyboardButton(text="Тета 6 Гц — медитация и сон", callback_data="bin_theta")],
+        [InlineKeyboardButton(text="Дельта 2 Гц — глубокий сон", callback_data="bin_delta")],
+        [InlineKeyboardButton(text="Бета 15 Гц — фокус и драйв", callback_data="bin_beta")],
+        [InlineKeyboardButton(text="Без бинаурала", callback_data="bin_none")],
+    ])
