@@ -9,38 +9,9 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.filters import CommandStart
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
-from utils.db import init_db, add_user, log_generation, get_stats, can_use_custom_topic, mark_custom_topic_used
+from utils.db import init_db, add_user, log_generation, get_stats, can_use_custom_topic, mark_custom_topic_used, get_all_users
 from config import BOT_TOKEN, ADMIN_ID
 from states.fsm import SubliminalStates
-from keyboards.inline import (
-    topics_keyboard,
-    voices_keyboard,
-    categories_keyboard,
-    affirmation_keyboard,
-)
-from keyboards.inline import (
-    topics_keyboard,
-    voices_keyboard,
-    categories_keyboard,
-    affirmation_keyboard,
-    lengths_keyboard,
-)
-
-from keyboards.inline import (
-    topics_keyboard,
-    voices_keyboard,
-    categories_keyboard,
-    affirmation_keyboard,
-    lengths_keyboard,
-    publish_keyboard,
-    publish_type_keyboard,
-)
-
-from services.affirmations import get_affirmation, last_source
-from services.tts import generate_voice
-from services.deepseek import generate_affirmation
-from services.audio import create_subliminal
-
 from keyboards.inline import (
     topics_keyboard,
     voices_keyboard,
@@ -51,7 +22,13 @@ from keyboards.inline import (
     publish_type_keyboard,
     solfeggio_keyboard,
     binaural_keyboard,
+    voice_tune_keyboard,
 )
+from services.affirmations import get_affirmation
+import services.affirmations
+from services.tts import generate_voice
+from services.deepseek import generate_affirmation
+from services.audio import create_subliminal
 
 FREQ_INFO = {
     "money": "888 Гц (изобилие) + альфа 10 Гц (расслабление)",
@@ -68,6 +45,8 @@ FREQ_INFO = {
 
 logging.basicConfig(level=logging.INFO)
 PROXY = "socks5://127.0.0.1:10808"
+CACHE_DIR = "cache"
+os.makedirs(CACHE_DIR, exist_ok=True)
 
 session = AiohttpSession(proxy=PROXY)
 bot = Bot(token=BOT_TOKEN, session=session)
@@ -87,10 +66,26 @@ TOPICS = {
     "topic_magnetism": {"key": "magnetism", "text": "магнетизм, притяжение людей, обаяние"},
 }
 
+
+@dp.message(F.text == "/rs")
+async def cmd_broadcast(message: types.Message, state):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    await state.clear()
+
+    await message.answer(
+        "📢 Напиши текст для рассылки.\n\n"
+        "Он уйдёт всем юзерам бота."
+    )
+    await state.set_state(SubliminalStates.waiting_for_broadcast)
+
+
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state):
-    # Удаляем старый саблиминал, если он был
     data = await state.get_data()
+
+    # Чистим старый саблиминал
     old_path = data.get("subliminal_path")
     if old_path and os.path.exists(old_path):
         try:
@@ -99,15 +94,45 @@ async def cmd_start(message: types.Message, state):
         except Exception as e:
             print(f"Ошибка удаления: {e}")
 
+    # Чистим превью
+    preview_path = data.get("preview_path")
+    if preview_path and os.path.exists(preview_path):
+        try:
+            os.remove(preview_path)
+        except Exception as e:
+            print(f"Ошибка удаления превью: {e}")
+
+    # Чистим кэш голоса
+    cached_voice = data.get("cached_voice_path")
+    if cached_voice and os.path.exists(cached_voice):
+        try:
+            os.remove(cached_voice)
+        except Exception as e:
+            print(f"Ошибка удаления кэша: {e}")
+
     await state.clear()
 
-    # Проверяем, новый ли юзер
     is_new = add_user(message.from_user.id, message.from_user.username or "")
-    ...
+
+    if is_new:
+        try:
+            await bot.send_message(
+                ADMIN_ID,
+                f"🆕 Новый юзер: @{message.from_user.username or 'без_юзернейма'}\n"
+                f"ID: {message.from_user.id}"
+            )
+        except Exception as e:
+            print(f"Не удалось отправить оповещение: {e}")
+
+    await message.answer(
+        "Привет! Выбери тему саблиминала:",
+        reply_markup=topics_keyboard()
+    )
+    await state.set_state(SubliminalStates.waiting_for_topic)
+
 
 @dp.message(F.text == "/stats")
 async def cmd_stats(message: types.Message):
-    # Только для админа
     if message.from_user.id != ADMIN_ID:
         return
 
@@ -119,9 +144,47 @@ async def cmd_stats(message: types.Message):
         f"🎧 Сгенерировано саблиминалов: <b>{stats['total_generations']}</b>\n\n"
         f"📦 Из пула: <b>{stats['from_pool']}</b>\n"
         f"🔧 Из строк: <b>{stats['from_strings']}</b>\n"
-        f"🤖 Из Дипсика: <b>{stats['from_deepseek']}</b>",
+        f"🤖 Из Дипсика: <b>{stats['from_deepseek']}</b>\n"
+        f"✍️ Свой текст: <b>{stats['from_custom']}</b>\n"
+        f"🎯 Своя тема: <b>{stats['from_custom_topic']}</b>",
         parse_mode="HTML"
-    )    
+    )
+
+
+@dp.message(SubliminalStates.waiting_for_broadcast)
+async def handle_broadcast(message: types.Message, state):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    broadcast_text = message.text
+    await state.clear()
+
+    users = get_all_users()
+
+    if not users:
+        await message.answer("Нет юзеров для рассылки.")
+        return
+
+    status = await message.answer(f"⏳ Рассылаю {len(users)} юзерам...")
+
+    sent = 0
+    failed = 0
+
+    for user_id in users:
+        try:
+            await bot.send_message(user_id, broadcast_text)
+            sent += 1
+        except Exception as e:
+            failed += 1
+            print(f"Не отправлено {user_id}: {e}")
+
+        await asyncio.sleep(0.05)
+
+    await status.edit_text(
+        f"✅ Рассылка завершена.\n\n"
+        f"📤 Отправлено: {sent}\n"
+        f"❌ Ошибок: {failed}"
+    )
 
 
 @dp.callback_query(SubliminalStates.waiting_for_topic, F.data.in_(TOPICS.keys()))
@@ -130,7 +193,6 @@ async def handle_topic(call: types.CallbackQuery, state):
     topic_key = topic_data["key"]
     await state.update_data(topic=topic_data["text"], topic_key=topic_key)
 
-    # Берём инфу о частоте и ритме
     freq_text = FREQ_INFO.get(topic_key, "")
 
     await call.message.edit_text(
@@ -147,17 +209,18 @@ async def handle_custom(call: types.CallbackQuery, state):
     await call.answer()
     await state.set_state(SubliminalStates.waiting_for_custom_text)
 
+
 @dp.callback_query(SubliminalStates.waiting_for_topic, F.data == "topic_custom_topic")
 async def handle_custom_topic(call: types.CallbackQuery, state):
-    # Проверяем лимит
-    #if not can_use_custom_topic(call.from_user.id):
-        #await call.message.edit_text(
-            #"❌ Лимит на «Свою тему» исчерпан.\n\n"
-            #"Можно использовать только 1 раз в день.\n"
-            #"Попробуй завтра или выбери готовую тему."
-        #)
-        #await call.answer()
-        #return
+    # Лимит временно отключён
+    # if not can_use_custom_topic(call.from_user.id):
+    #     await call.message.edit_text(
+    #         "❌ Лимит на «Свою тему» исчерпан.\n\n"
+    #         "Можно использовать только 1 раз в день.\n"
+    #         "Попробуй завтра или выбери готовую тему."
+    #     )
+    #     await call.answer()
+    #     return
 
     await call.message.edit_text(
         "🎯 Напиши свою тему — то, чего нет в готовом списке.\n\n"
@@ -170,9 +233,10 @@ async def handle_custom_topic(call: types.CallbackQuery, state):
     await call.answer()
     await state.set_state(SubliminalStates.waiting_for_custom_topic)
 
+
 @dp.message(SubliminalStates.waiting_for_custom_topic)
 async def handle_custom_topic_text(message: types.Message, state):
-        # ВРЕМЕННО ОТКЛЮЧЕНО
+    # Лимит временно отключён
     # if not can_use_custom_topic(message.from_user.id):
     #     await message.answer(
     #         "❌ Лимит на «Свою тему» исчерпан.\n\n"
@@ -182,7 +246,6 @@ async def handle_custom_topic_text(message: types.Message, state):
     #     await state.clear()
     #     return
 
-    # Проверяем длину
     if len(message.text) > 500:
         await message.answer(
             f"❌ Слишком длинный запрос ({len(message.text)} символов).\n\n"
@@ -200,23 +263,23 @@ async def handle_custom_topic_text(message: types.Message, state):
     affirmation = await asyncio.to_thread(generate_affirmation, user_topic)
     await state.update_data(affirmation=affirmation)
 
-        # Показываем текст аффирмаций
+    await state.update_data(source="custom_topic")
+
     await status.edit_text(
         f"Вот что сгенерировалось:\n\n{affirmation}"
     )
 
-    # Отдельным сообщением — выбор частоты
     await message.answer(
         "🎵 Теперь выбери сольфеджио-частоту:",
         reply_markup=solfeggio_keyboard()
     )
     await state.set_state(SubliminalStates.choosing_solfeggio)
 
+
 @dp.callback_query(SubliminalStates.choosing_solfeggio, F.data.startswith("sol_"))
 async def handle_solfeggio(call: types.CallbackQuery, state):
     sol_code = call.data.replace("sol_", "")
 
-    # Сохраняем выбор
     if sol_code == "none":
         await state.update_data(custom_solfeggio=None)
     else:
@@ -230,11 +293,11 @@ async def handle_solfeggio(call: types.CallbackQuery, state):
     await call.answer()
     await state.set_state(SubliminalStates.choosing_binaural)
 
+
 @dp.callback_query(SubliminalStates.choosing_binaural, F.data.startswith("bin_"))
 async def handle_binaural(call: types.CallbackQuery, state):
     bin_code = call.data.replace("bin_", "")
 
-    # Маппинг кодов на частоты
     binaural_map = {
         "alpha": (200, 210),
         "theta": (200, 206),
@@ -251,12 +314,13 @@ async def handle_binaural(call: types.CallbackQuery, state):
         reply_markup=voices_keyboard()
     )
     await call.answer()
-    await state.set_state(SubliminalStates.choosing_voice)        
+    await state.set_state(SubliminalStates.choosing_voice)
+
 
 @dp.message(SubliminalStates.waiting_for_custom_text)
 async def handle_custom_text(message: types.Message, state):
-    # Сохраняем текст юзера КАК ГОТОВЫЕ АФФИРМАЦИИ
     await state.update_data(affirmation=message.text)
+    await state.update_data(source="custom")
 
     await message.answer(
         "✅ Текст принят.\n\n"
@@ -267,14 +331,12 @@ async def handle_custom_text(message: types.Message, state):
 
 
 async def ask_affirmation(message: types.Message, state):
-    """Генерирует аффирмации и показывает кнопки Перегенерить / Подходит."""
     data = await state.get_data()
     topic = data.get("topic", "успех")
     topic_key = data.get("topic_key")
 
     status = await message.answer("⏳ Генерирую аффирмации...")
 
-    
     delay = random.uniform(2.0, 4.0)
     await asyncio.sleep(delay)
 
@@ -287,10 +349,9 @@ async def ask_affirmation(message: types.Message, state):
         reply_markup=affirmation_keyboard()
     )
 
+
 @dp.callback_query(F.data == "affirm_regen")
 async def handle_regen(call: types.CallbackQuery, state):
-    """Перегенерировать текст с имитацией работы нейронки."""
-
     data = await state.get_data()
     topic = data.get("topic", "успех")
     topic_key = data.get("topic_key")
@@ -298,7 +359,6 @@ async def handle_regen(call: types.CallbackQuery, state):
     await call.message.edit_text("⏳ Генерирую новый текст...")
     await call.answer()
 
-    
     delay = random.uniform(2.0, 4.0)
     await asyncio.sleep(delay)
 
@@ -314,19 +374,17 @@ async def handle_regen(call: types.CallbackQuery, state):
 
 @dp.callback_query(F.data == "affirm_ok")
 async def handle_ok(call: types.CallbackQuery, state):
-    """Юзер подтвердил текст — идём к выбору голоса."""
     await call.message.edit_text(
         "✅ Принято. Теперь выбери голос:",
         reply_markup=voices_keyboard()
     )
     await call.answer()
-    await state.set_state(SubliminalStates.choosing_voice)    
-
+    await state.set_state(SubliminalStates.choosing_voice)
 
 
 @dp.callback_query(SubliminalStates.choosing_voice, F.data.startswith("voice_"))
 async def handle_voice(call: types.CallbackQuery, state):
-    voice_type = call.data.replace("voice_", "")  # male_1, female_2, robot
+    voice_type = call.data.replace("voice_", "")
     await state.update_data(voice_type=voice_type)
 
     await call.message.edit_text(
@@ -334,24 +392,21 @@ async def handle_voice(call: types.CallbackQuery, state):
         reply_markup=categories_keyboard()
     )
     await call.answer()
-    await state.set_state(SubliminalStates.choosing_track)    
+    await state.set_state(SubliminalStates.choosing_track)
+
 
 @dp.callback_query(SubliminalStates.choosing_track, F.data.startswith("cat_"))
 async def handle_category(call: types.CallbackQuery, state):
-    category = call.data.replace("cat_", "")  # ambient, deephouse, lofi, nature, custom
+    category = call.data.replace("cat_", "")
     await state.update_data(category=category)
 
-    # Если юзер выбрал свой трек
     if category == "custom":
         await call.message.edit_text("📁 Отправь свой MP3-файл:")
         await call.answer()
         await state.set_state(SubliminalStates.choosing_track_item)
         return
 
-    # Папка с полными треками
     category_dir = os.path.join("assets", category)
-
-    # Папка с готовыми превью
     preview_dir = os.path.join("assets", "previews", category)
 
     if not os.path.isdir(category_dir):
@@ -366,7 +421,6 @@ async def handle_category(call: types.CallbackQuery, state):
         await call.answer()
         return
 
-            # 1. Отправляем готовые превью ПАРАЛЛЕЛЬНО
     await call.message.edit_text("🎧 Слушай превью и выбирай:")
     await call.answer()
 
@@ -376,7 +430,6 @@ async def handle_category(call: types.CallbackQuery, state):
 
         if os.path.exists(preview_path):
             audio_file = FSInputFile(preview_path)
-            # Оборачиваем в bot.send_audio — это даёт корутину
             tasks.append(bot.send_audio(
                 chat_id=call.message.chat.id,
                 audio=audio_file,
@@ -388,7 +441,6 @@ async def handle_category(call: types.CallbackQuery, state):
     if tasks:
         await asyncio.gather(*tasks)
 
-    # 2. Клавиатура с выбором
     buttons = [
         [InlineKeyboardButton(
             text=f"🎵 {track.replace('.mp3', '')}",
@@ -438,7 +490,8 @@ async def back_to_category(call: types.CallbackQuery, state):
         reply_markup=categories_keyboard()
     )
     await call.answer()
-    await state.set_state(SubliminalStates.choosing_track)    
+    await state.set_state(SubliminalStates.choosing_track)
+
 
 @dp.callback_query(SubliminalStates.choosing_track_item, F.data.startswith("track_"))
 async def handle_track_choice(call: types.CallbackQuery, state):
@@ -453,21 +506,19 @@ async def handle_track_choice(call: types.CallbackQuery, state):
     await call.answer()
     await state.set_state(SubliminalStates.choosing_length)
 
+
 @dp.message(SubliminalStates.choosing_track_item, F.audio | F.document)
 async def handle_custom_track(message: types.Message, state):
-    # Проверяем, что это аудио или документ с mp3
     file = message.audio or message.document
 
     if not file:
         await message.answer("Пришли MP3-файл.")
         return
 
-    # Проверяем расширение (если документ)
     if message.document and not message.document.file_name.lower().endswith(".mp3"):
         await message.answer("Нужен именно MP3-файл.")
         return
 
-    # Скачиваем файл
     file_info = await bot.get_file(file.file_id)
     os.makedirs("assets/user", exist_ok=True)
     user_track_path = f"assets/user/{message.from_user.id}_{int(time.time())}.mp3"
@@ -481,9 +532,9 @@ async def handle_custom_track(message: types.Message, state):
     )
     await state.set_state(SubliminalStates.choosing_length)
 
+
 @dp.callback_query(SubliminalStates.choosing_length, F.data.startswith("len_"))
 async def handle_length(call: types.CallbackQuery, state):
-    # Определяем длину
     length_code = call.data.replace("len_", "")
 
     if length_code == "5":
@@ -492,12 +543,11 @@ async def handle_length(call: types.CallbackQuery, state):
         length_minutes = 10
     elif length_code == "30":
         length_minutes = 30
-    else:  # len_track
-        length_minutes = None  # по длине трека
+    else:
+        length_minutes = None
 
     await state.update_data(length_minutes=length_minutes)
 
-    # Формируем текст
     if length_minutes:
         length_text = f"{length_minutes} минут"
     else:
@@ -510,68 +560,211 @@ async def handle_length(call: types.CallbackQuery, state):
     await call.answer()
     await state.set_state(SubliminalStates.waiting_for_name)
 
+
 @dp.message(SubliminalStates.waiting_for_name)
 async def handle_name(message: types.Message, state):
-    # Сохраняем название, которое дал юзер
-    await state.update_data(subliminal_name=message.text)
+    if message.text.startswith("/"):
+        await message.answer(
+            "❌ Название не может начинаться с «/».\n\n"
+            "Напиши обычное название для саблиминала."
+        )
+        return
 
-    await message.answer(
-        f"✅ Название: «{message.text}».\n\nСобираю саблиминал..."
-    )
-    await generate_subliminal(message, state)    
-
-async def generate_subliminal(message: types.Message, state):
     data = await state.get_data()
     affirmation = data.get("affirmation")
     voice_type = data.get("voice_type", "male_1")
+
+    # Генерим голос ОДИН РАЗ и сохраняем в кэш
+    await message.answer("⏳ Готовлю голос...")
+    voice_path = await generate_voice(affirmation, voice_type=voice_type)
+
+    if not voice_path:
+        await message.answer("❌ Не удалось создать озвучку.")
+        await state.clear()
+        return
+
+    await state.update_data(
+        subliminal_name=message.text,
+        voice_offset=0,
+        voice_clicks=0,
+        cached_voice_path=voice_path
+    )
+
+    await message.answer(
+        f"✅ Название: «{message.text}».\n\n"
+        f"🎧 Генерирую превью (30 секунд)...\n"
+        f"Послушай и настрой громкость голоса."
+    )
+
+    await generate_preview(message, state)
+
+
+async def generate_preview(message: types.Message, state):
+    """Генерирует короткое превью (30 сек) с текущим voice_offset."""
+    data = await state.get_data()
+    category = data.get("category", "nature")
+    custom_track = data.get("custom_track")
+    custom_solfeggio = data.get("custom_solfeggio")
+    custom_binaural = data.get("custom_binaural")
+    voice_offset = data.get("voice_offset", 0)
+
+    # Берём голос из кэша
+    voice_path = data.get("cached_voice_path")
+
+    if not voice_path or not os.path.exists(voice_path):
+        await message.answer("❌ Голос потерялся. Начни заново — /start")
+        await state.clear()
+        return
+
+    chosen_track = data.get("chosen_track")
+
+    if custom_track:
+        subliminal_path = await asyncio.to_thread(
+            create_subliminal, voice_path, None, custom_track, 0.5,
+            custom_solfeggio, custom_binaural, voice_offset
+        )
+    elif chosen_track:
+        track_path = os.path.join("assets", category, chosen_track)
+        subliminal_path = await asyncio.to_thread(
+            create_subliminal, voice_path, None, track_path, 0.5,
+            custom_solfeggio, custom_binaural, voice_offset
+        )
+    else:
+        subliminal_path = await asyncio.to_thread(
+            create_subliminal, voice_path, category, None, 0.5,
+            custom_solfeggio, custom_binaural, voice_offset
+        )
+
+    if not subliminal_path or not os.path.exists(subliminal_path):
+        await message.answer("❌ Не удалось создать превью.")
+        return
+
+    await state.update_data(preview_path=subliminal_path)
+
+    audio_file = FSInputFile(subliminal_path)
+    await message.answer_audio(
+        audio=audio_file,
+        title="Превью (30 сек)",
+        caption=f"🎧 Громкость голоса: {voice_offset:+d} дБ\n"
+                f"Кликов: {data.get('voice_clicks', 0)}/5"
+    )
+
+    await message.answer(
+        "Настрой громкость голоса:",
+        reply_markup=voice_tune_keyboard()
+    )
+
+@dp.callback_query(F.data == "voice_up")
+async def handle_voice_up(call: types.CallbackQuery, state):
+    data = await state.get_data()
+    voice_clicks = data.get("voice_clicks", 0)
+
+    if voice_clicks >= 5:
+        await call.answer("❌ Лимит настройки исчерпан (5 кликов).", show_alert=True)
+        return
+
+    voice_offset = data.get("voice_offset", 0)
+
+    if voice_offset >= 20:
+        await call.answer("🔊 Громче уже нельзя.", show_alert=True)
+        return
+
+    await state.update_data(
+        voice_offset=voice_offset + 5,
+        voice_clicks=voice_clicks + 1
+    )
+
+    preview_path = data.get("preview_path")
+    if preview_path and os.path.exists(preview_path):
+        os.remove(preview_path)
+
+    await call.message.delete()
+    await call.answer()
+    await generate_preview(call.message, state)
+
+
+@dp.callback_query(F.data == "voice_down")
+async def handle_voice_down(call: types.CallbackQuery, state):
+    data = await state.get_data()
+    voice_clicks = data.get("voice_clicks", 0)
+
+    if voice_clicks >= 5:
+        await call.answer("❌ Лимит настройки исчерпан (5 кликов).", show_alert=True)
+        return
+
+    voice_offset = data.get("voice_offset", 0)
+
+    if voice_offset <= -20:
+        await call.answer("🔉 Тише уже нельзя.", show_alert=True)
+        return
+
+    await state.update_data(
+        voice_offset=voice_offset - 5,
+        voice_clicks=voice_clicks + 1
+    )
+
+    preview_path = data.get("preview_path")
+    if preview_path and os.path.exists(preview_path):
+        os.remove(preview_path)
+
+    await call.message.delete()
+    await call.answer()
+    await generate_preview(call.message, state)
+
+
+@dp.callback_query(F.data == "voice_done")
+async def handle_voice_done(call: types.CallbackQuery, state):
+    data = await state.get_data()
+    preview_path = data.get("preview_path")
+
+    if preview_path and os.path.exists(preview_path):
+        os.remove(preview_path)
+
+    await call.message.delete()
+    await call.answer()
+
+    await call.message.answer("✅ Готово! Собираю полный саблиминал...")
+    await generate_subliminal(call.message, state)
+
+
+async def generate_subliminal(message: types.Message, state):
+    data = await state.get_data()
     category = data.get("category", "nature")
     custom_track = data.get("custom_track")
     length_minutes = data.get("length_minutes")
     custom_solfeggio = data.get("custom_solfeggio")
     custom_binaural = data.get("custom_binaural")
+    voice_offset = data.get("voice_offset", 0)
 
-    if not affirmation:
-        await message.answer("Что-то пошло не так. Начни заново — /start")
+    # Берём голос из кэша
+    voice_path = data.get("cached_voice_path")
+
+    if not voice_path or not os.path.exists(voice_path):
+        await message.answer("❌ Голос потерялся. Начни заново — /start")
         await state.clear()
         return
 
-    status = await message.answer("⏳ Озвучиваю...")
+    status = await message.answer("⏳ Собираю саблиминал...")
 
-    # 1. Озвучка
-    voice_path = await generate_voice(affirmation, voice_type=voice_type)
-
-    if not voice_path:
-        await status.edit_text("❌ Не удалось создать озвучку.")
-        await state.clear()
-        return
-
-    # Отправляем голосовое
-    voice_file = FSInputFile(voice_path)
-    await message.answer_voice(voice=voice_file)
-
-    await status.edit_text("⏳ Собираю саблиминал...")
-
-    # 2. Саблиминал — свой трек или из категории
     chosen_track = data.get("chosen_track")
 
     if custom_track:
         subliminal_path = await asyncio.to_thread(
             create_subliminal, voice_path, None, custom_track, length_minutes,
-            custom_solfeggio, custom_binaural
+            custom_solfeggio, custom_binaural, voice_offset
         )
     elif chosen_track:
         track_path = os.path.join("assets", category, chosen_track)
         subliminal_path = await asyncio.to_thread(
             create_subliminal, voice_path, None, track_path, length_minutes,
-            custom_solfeggio, custom_binaural
+            custom_solfeggio, custom_binaural, voice_offset
         )
     else:
         subliminal_path = await asyncio.to_thread(
             create_subliminal, voice_path, category, None, length_minutes,
-            custom_solfeggio, custom_binaural
+            custom_solfeggio, custom_binaural, voice_offset
         )
 
-                 # 3. Отправка
     if subliminal_path and os.path.exists(subliminal_path):
         audio_file = FSInputFile(subliminal_path)
         subliminal_name = data.get("subliminal_name", "Твой саблиминал")
@@ -582,44 +775,37 @@ async def generate_subliminal(message: types.Message, state):
         )
         await status.edit_text("✅ Готово!")
 
-        # Логируем генерацию
-        log_generation(message.from_user.id, last_source)
+        source = data.get("source", services.affirmations.last_source)
+        log_generation(message.from_user.id, source)
 
-        # Сохраняем путь к саблиминалу в state — для публикации
         await state.update_data(subliminal_path=subliminal_path)
 
-        # Спрашиваем про публикацию
         await message.answer(
             "📢 Хочешь опубликовать свой саблиминал в канале?",
             reply_markup=publish_keyboard()
         )
-        return  # ← ВАЖНО: не удаляем файл, он ещё нужен для публикации
+        return
     else:
         await status.edit_text("❌ Не удалось собрать саблиминал.")
 
-        # 4. Чистка — удаляем только голосовой файл
-    if voice_path and os.path.exists(voice_path):
-        os.remove(voice_path)
-
-    # Файл саблиминала НЕ удаляем — он нужен для публикации
 
 @dp.callback_query(F.data == "publish_no")
 async def handle_publish_no(call: types.CallbackQuery, state):
-    """Юзер отказался от публикации — чистим и сбрасываем."""
     data = await state.get_data()
     subliminal_path = data.get("subliminal_path")
     custom_track = data.get("custom_track")
+    cached_voice = data.get("cached_voice_path")
 
-    # Чистим файлы
     if subliminal_path and os.path.exists(subliminal_path):
         os.remove(subliminal_path)
     if custom_track and os.path.exists(custom_track):
         os.remove(custom_track)
+    if cached_voice and os.path.exists(cached_voice):
+        os.remove(cached_voice)
 
     await call.message.edit_text("Ок, не публикуем. Хочешь ещё один?")
     await call.answer()
 
-    # Сброс
     await state.clear()
     await call.message.answer(
         "Выбери тему:",
@@ -630,7 +816,6 @@ async def handle_publish_no(call: types.CallbackQuery, state):
 
 @dp.callback_query(F.data == "publish_yes")
 async def handle_publish_yes(call: types.CallbackQuery, state):
-    """Юзер хочет опубликовать — спрашиваем анонимно или от имени."""
     await call.message.edit_text(
         "Как опубликовать?",
         reply_markup=publish_type_keyboard()
@@ -640,24 +825,22 @@ async def handle_publish_yes(call: types.CallbackQuery, state):
 
 @dp.callback_query(F.data == "pub_anon")
 async def handle_pub_anon(call: types.CallbackQuery, state):
-    """Публикуем анонимно."""
     await publish_subliminal(call, state, anonymous=True)
 
 
 @dp.callback_query(F.data == "pub_named")
 async def handle_pub_named(call: types.CallbackQuery, state):
-    """Публикуем от имени юзера."""
     await publish_subliminal(call, state, anonymous=False)
 
 
 async def publish_subliminal(call: types.CallbackQuery, state, anonymous: bool):
-    """Публикует саблиминал в канал."""
     from config import CHANNEL_ID
 
     data = await state.get_data()
     subliminal_path = data.get("subliminal_path")
     subliminal_name = data.get("subliminal_name", "Саблиминал")
     custom_track = data.get("custom_track")
+    cached_voice = data.get("cached_voice_path")
 
     if not subliminal_path or not os.path.exists(subliminal_path):
         await call.message.edit_text("❌ Файл потерялся. Начни заново — /start")
@@ -666,7 +849,6 @@ async def publish_subliminal(call: types.CallbackQuery, state, anonymous: bool):
         return
 
     try:
-                # Формируем подпись
         if anonymous:
             caption = f"🎧 {subliminal_name}\n\n🕶 Анонимно"
         else:
@@ -676,10 +858,8 @@ async def publish_subliminal(call: types.CallbackQuery, state, anonymous: bool):
             else:
                 caption = f"🎧 {subliminal_name}\n\n👤 {call.from_user.full_name}"
 
-        # Добавляем подпись бота
         caption += "\n\n🤖 Сделано в @SubliminalGenBot"
 
-        # Отправляем в канал
         audio_file = FSInputFile(subliminal_path)
         await bot.send_audio(
             chat_id=CHANNEL_ID,
@@ -696,33 +876,34 @@ async def publish_subliminal(call: types.CallbackQuery, state, anonymous: bool):
         await call.message.edit_text("❌ Не удалось опубликовать. Попробуй позже.")
         await call.answer()
 
-    # Чистка файлов
+    # Чистка
     if subliminal_path and os.path.exists(subliminal_path):
         os.remove(subliminal_path)
     if custom_track and os.path.exists(custom_track):
         os.remove(custom_track)
+    if cached_voice and os.path.exists(cached_voice):
+        os.remove(cached_voice)
 
-    # Сброс
     await state.clear()
     await call.message.answer(
         "Хочешь ещё один?",
         reply_markup=topics_keyboard()
     )
-    await state.set_state(SubliminalStates.waiting_for_topic)    
+    await state.set_state(SubliminalStates.waiting_for_topic)
 
 @dp.callback_query(F.data == "back_to_publish")
 async def back_to_publish(call: types.CallbackQuery, state):
-    """Возврат к вопросу 'публиковать или нет'."""
     await call.message.edit_text(
         "📢 Хочешь опубликовать свой саблиминал в канале?",
         reply_markup=publish_keyboard()
     )
-    await call.answer()    
+    await call.answer()
+
 
 async def cleanup_output():
     """Удаляет старые файлы из output/ раз в час."""
     while True:
-        await asyncio.sleep(3600)  # раз в час
+        await asyncio.sleep(3600)
 
         output_dir = "output"
         if not os.path.exists(output_dir):
@@ -734,7 +915,6 @@ async def cleanup_output():
         for filename in os.listdir(output_dir):
             filepath = os.path.join(output_dir, filename)
             if os.path.isfile(filepath):
-                # Если файл старше 1 часа — удаляем
                 if now - os.path.getmtime(filepath) > 3600:
                     try:
                         os.remove(filepath)
@@ -743,12 +923,12 @@ async def cleanup_output():
                         print(f"Ошибка удаления {filename}: {e}")
 
         if removed:
-            print(f"🧹 Фоновая чистка: удалено {removed} старых файлов")    
+            print(f"🧹 Фоновая чистка: удалено {removed} старых файлов")
+
 
 async def main():
     init_db()
 
-    # Запускаем фоновую чистку
     asyncio.create_task(cleanup_output())
 
     print("Бот запущен. Нажми Ctrl+C для остановки.")

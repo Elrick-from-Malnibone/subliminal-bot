@@ -32,3 +32,5 @@ assets/previews/
 # OS
 .DS_Store
 Thumbs.db
+
+cache/

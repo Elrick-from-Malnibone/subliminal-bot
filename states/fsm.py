@@ -12,3 +12,4 @@ class SubliminalStates(StatesGroup):
     choosing_track_item = State()
     choosing_length = State()
     waiting_for_name = State()
+    waiting_for_broadcast = State()

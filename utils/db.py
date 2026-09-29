@@ -98,12 +98,20 @@ def get_stats() -> dict:
         c.execute("SELECT COUNT(*) FROM generations WHERE source = 'deepseek'")
         from_deepseek = c.fetchone()[0]
 
+        c.execute("SELECT COUNT(*) FROM generations WHERE source = 'custom'")
+        from_custom = c.fetchone()[0]
+
+        c.execute("SELECT COUNT(*) FROM generations WHERE source = 'custom_topic'")
+        from_custom_topic = c.fetchone()[0]
+
         return {
             "total_users": total_users,
             "total_generations": total_generations,
             "from_pool": from_pool,
             "from_strings": from_strings,
             "from_deepseek": from_deepseek,
+            "from_custom": from_custom,
+            "from_custom_topic": from_custom_topic,
         }
 
 
@@ -150,3 +158,11 @@ def mark_custom_topic_used(user_id: int):
             )
 
         conn.commit()
+
+
+def get_all_users() -> list[int]:
+    """Возвращает список ID всех юзеров."""
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("SELECT user_id FROM users")
+        return [row[0] for row in c.fetchall()]

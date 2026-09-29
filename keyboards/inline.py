@@ -134,3 +134,15 @@ def binaural_keyboard():
         [InlineKeyboardButton(text="Бета 15 Гц — фокус и драйв", callback_data="bin_beta")],
         [InlineKeyboardButton(text="Без бинаурала", callback_data="bin_none")],
     ])
+
+def voice_tune_keyboard():
+    """Клавиатура настройки громкости голоса."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔉 Тише", callback_data="voice_down"),
+            InlineKeyboardButton(text="🔊 Громче", callback_data="voice_up"),
+        ],
+        [
+            InlineKeyboardButton(text="✅ Готово", callback_data="voice_done"),
+        ],
+    ])
