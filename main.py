@@ -45,6 +45,20 @@ from services.tts import generate_voice
 from services.deepseek import generate_affirmation
 from services.audio import create_subliminal
 
+
+
+# Логи в файл
+LOG_FILE = os.path.join(os.getenv("DATA_DIR", "/app/data"), "bot.log")
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 print("=== ЗАПУСК БОТА ===", flush=True)
 print(f"BOT_TOKEN: {'есть' if BOT_TOKEN else 'НЕТ'}", flush=True)
 print(f"WEBHOOK_URL: {os.getenv('WEBHOOK_URL', 'НЕТ')}", flush=True)
@@ -64,7 +78,6 @@ FREQ_INFO = {
     "magnetism": "639 Гц (связь с людьми) + альфа 10 Гц",
 }
 
-logging.basicConfig(level=logging.INFO)
 
 CACHE_DIR = "cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
@@ -1005,8 +1018,10 @@ async def generate_subliminal_background(data: dict):
             await bot.send_message(chat_id, "❌ Не удалось собрать саблиминал.")
 
     except Exception as e:
-        print(f"Ошибка фоновой генерации: {e}")
-        await bot.send_message(chat_id, f"❌ Ошибка: {e}")    
+        logger.error(f"❌ ОШИБКА ФОНОВОЙ ГЕНЕРАЦИИ: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        await bot.send_message(chat_id, f"❌ Ошибка: {e}")  
 
 
 async def generate_subliminal(message: types.Message, state):
