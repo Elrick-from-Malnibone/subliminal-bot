@@ -926,13 +926,17 @@ async def handle_voice_done(call: types.CallbackQuery, state):
     await call.message.delete()
     await call.answer()
 
+        # Устанавливаем источник, если не установлен
+    if "source" not in data or not data["source"]:
+        import services.affirmations
+        data["source"] = services.affirmations.last_source or "unknown"
+
     # Сохраняем user_id и chat_id для фоновой задачи
     data["user_id"] = call.from_user.id
     data["chat_id"] = call.message.chat.id
 
     # Копируем данные (state очистится)
     data_copy = dict(data)
-
     await call.message.answer(
         "✅ Готово! Генерация идёт в фоне.\n\n"
         "Я пришлю саблиминал, когда он будет готов. "
