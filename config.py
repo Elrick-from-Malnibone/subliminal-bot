@@ -20,3 +20,22 @@ DEEPSEEK_MODEL = "deepseek-v4-flash"
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
 CHANNEL_ID = os.getenv("CHANNEL_ID")
+
+# === ЛИМИТЫ ===
+
+# Бесплатный тариф
+FREE_CUSTOM_TOPICS = 1      # своих тем в день
+FREE_MINUTES_PER_DAY = 30   # минут в день
+FREE_MINUTES_PER_HOUR = 30  # минут в час
+FREE_ANTISPAM = 30          # секунд между генерациями
+
+# Подписка
+SUB_CUSTOM_TOPICS = 10       # своих тем в день
+SUB_MINUTES_PER_DAY = 180    # минут в день
+SUB_MINUTES_PER_HOUR = 90    # минут в час
+SUB_ANTISPAM = 10            # секунд между генерациями
+
+# === ЦЕНЫ (тестовые — 1 руб) ===
+PRICE_SUBSCRIPTION = 300       # подписка
+PRICE_CUSTOM_TOPIC = 50       # разовая своя тема
+PRICE_REMOVE_SIGNATURE = 30   # убрать подпись с 1 саба

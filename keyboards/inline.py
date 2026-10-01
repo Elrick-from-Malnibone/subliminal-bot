@@ -146,3 +146,39 @@ def voice_tune_keyboard():
             InlineKeyboardButton(text="✅ Готово", callback_data="voice_done"),
         ],
     ])
+
+def limit_keyboard():
+    """Клавиатура при исчерпании лимита."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="💎 Подписка", callback_data="subscribe"),
+        ],
+        [
+            InlineKeyboardButton(text="💳 Разовая покупка", callback_data="one_time"),
+        ],
+    ])
+
+def subscribe_keyboard():
+    """Клавиатура подписки."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="💳 Оплатить подписку", callback_data="pay_subscription"),
+        ],
+        [
+            InlineKeyboardButton(text="💳 Купить 1 свою тему", callback_data="pay_custom_topic"),
+        ],
+        [
+            InlineKeyboardButton(text="💳 Убрать подпись с 1 саба", callback_data="pay_remove_signature"),
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_topic"),
+        ],
+    ])
+
+def back_to_subscribe_keyboard():
+    """Кнопка назад к подписке."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="subscribe"),
+        ],
+    ])

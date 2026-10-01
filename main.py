@@ -5,11 +5,20 @@ import os
 import time
 import random
 
+from config import (
+    BOT_TOKEN, ADMIN_ID,
+    PRICE_SUBSCRIPTION, PRICE_CUSTOM_TOPIC, PRICE_REMOVE_SIGNATURE,
+)
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.filters import CommandStart
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
-from utils.db import init_db, add_user, log_generation, get_stats, can_use_custom_topic, mark_custom_topic_used, get_all_users
+from utils.db import (
+    init_db, add_user, log_generation, get_stats,
+    can_use_custom_topic, mark_custom_topic_used, get_all_users,
+    has_active_subscription, get_user_limits, get_today_usage,
+    check_limits, add_usage,
+)
 from config import BOT_TOKEN, ADMIN_ID
 from states.fsm import SubliminalStates
 from keyboards.inline import (
@@ -23,6 +32,9 @@ from keyboards.inline import (
     solfeggio_keyboard,
     binaural_keyboard,
     voice_tune_keyboard,
+    limit_keyboard,
+    subscribe_keyboard,
+    back_to_subscribe_keyboard,
 )
 from services.affirmations import get_affirmation
 import services.affirmations
@@ -44,14 +56,19 @@ FREQ_INFO = {
 }
 
 logging.basicConfig(level=logging.INFO)
-PROXY = "socks5://127.0.0.1:10808"
+
 CACHE_DIR = "cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-session = AiohttpSession(proxy=PROXY)
-bot = Bot(token=BOT_TOKEN, session=session)
-dp = Dispatcher()
+PROXY = os.getenv("PROXY", "")
 
+if PROXY:
+    session = AiohttpSession(proxy=PROXY)
+    bot = Bot(token=BOT_TOKEN, session=session)
+else:
+    bot = Bot(token=BOT_TOKEN)
+
+dp = Dispatcher()
 
 TOPICS = {
     "topic_money": {"key": "money", "text": "деньги, богатство, изобилие"},
@@ -149,6 +166,79 @@ async def cmd_stats(message: types.Message):
         f"🎯 Своя тема: <b>{stats['from_custom_topic']}</b>",
         parse_mode="HTML"
     )
+
+@dp.message(F.text == "/subscribe")
+async def cmd_subscribe(message: types.Message, state):
+    """Показывает тарифы подписки."""
+    await state.clear()
+
+    await message.answer(
+        f"💎 <b>Подписка — {PRICE_SUBSCRIPTION} руб/мес</b>\n\n"
+        f"Что входит:\n"
+        f"— 10 своих тем в день\n"
+        f"— 180 минут саблиминалов в день\n"
+        f"— Без подписи бота\n"
+        f"— Приоритетная генерация\n\n"
+        f"<b>Разовые покупки:</b>\n"
+        f"— 1 своя тема — {PRICE_CUSTOM_TOPIC} руб\n"
+        f"— Убрать подпись с 1 саба — {PRICE_REMOVE_SIGNATURE} руб",
+        parse_mode="HTML",
+        reply_markup=subscribe_keyboard()
+    )
+
+@dp.callback_query(F.data == "pay_subscription")
+async def handle_pay_subscription(call: types.CallbackQuery, state):
+    """Заглушка оплаты подписки (пока ЮKassa не подключена)."""
+    await call.message.edit_text(
+        f"💎 Подписка — {PRICE_SUBSCRIPTION} руб/мес\n\n"
+        f"⏳ Оплата временно недоступна.\n"
+        f"Скоро подключим 👌",
+        reply_markup=back_to_subscribe_keyboard()
+    )
+    await call.answer()
+
+
+@dp.callback_query(F.data == "pay_custom_topic")
+async def handle_pay_custom_topic(call: types.CallbackQuery, state):
+    """Заглушка оплаты разовой своей темы."""
+    await call.message.edit_text(
+        f"💳 1 своя тема — {PRICE_CUSTOM_TOPIC} руб\n\n"
+        f"⏳ Оплата временно недоступна.\n"
+        f"Скоро подключим 👌",
+        reply_markup=back_to_subscribe_keyboard()
+    )
+    await call.answer()
+
+
+@dp.callback_query(F.data == "pay_remove_signature")
+async def handle_pay_remove_signature(call: types.CallbackQuery, state):
+    """Заглушка оплаты убрать подпись."""
+    await call.message.edit_text(
+        f"💳 Убрать подпись с 1 саба — {PRICE_REMOVE_SIGNATURE} руб\n\n"
+        f"⏳ Оплата временно недоступна.\n"
+        f"Скоро подключим 👌",
+        reply_markup=back_to_subscribe_keyboard()
+    )
+    await call.answer()    
+
+
+@dp.callback_query(F.data == "subscribe")
+async def handle_subscribe(call: types.CallbackQuery, state):
+    """Показывает тарифы подписки (из кнопки)."""
+    await call.message.edit_text(
+        f"💎 <b>Подписка — {PRICE_SUBSCRIPTION} руб/мес</b>\n\n"
+        f"Что входит:\n"
+        f"— 10 своих тем в день\n"
+        f"— 180 минут саблиминалов в день\n"
+        f"— Без подписи бота\n"
+        f"— Приоритетная генерация\n\n"
+        f"<b>Разовые покупки:</b>\n"
+        f"— 1 своя тема — {PRICE_CUSTOM_TOPIC} руб\n"
+        f"— Убрать подпись с 1 саба — {PRICE_REMOVE_SIGNATURE} руб",
+        parse_mode="HTML",
+        reply_markup=subscribe_keyboard()
+    )
+    await call.answer()    
 
 
 @dp.message(SubliminalStates.waiting_for_broadcast)
@@ -573,10 +663,60 @@ async def handle_name(message: types.Message, state):
     data = await state.get_data()
     affirmation = data.get("affirmation")
     voice_type = data.get("voice_type", "male_1")
+    length_minutes = data.get("length_minutes")
+    source = data.get("source", "")
 
-    # Генерим голос ОДИН РАЗ и сохраняем в кэш
+    # Определяем длину для проверки лимита
+    if length_minutes:
+        requested_minutes = length_minutes
+    else:
+        requested_minutes = 10  # по длине трека — примерно
+
+    # Проверяем лимиты
+    is_custom_topic = (source == "custom_topic")
+    limit_check = check_limits(
+        message.from_user.id,
+        requested_minutes,
+        is_custom_topic=is_custom_topic
+    )
+
+    if not limit_check["allowed"]:
+        reason = limit_check["reason"]
+        message_text = limit_check["message"]
+
+        # Формируем предложение
+        if reason == "custom_topic":
+            await message.answer(
+                f"❌ {message_text}\n\n"
+                f"💎 Подписка {PRICE_SUBSCRIPTION} руб/мес — 10 своих тем в день\n"
+                f"💳 Разовая покупка — {PRICE_CUSTOM_TOPIC} руб за 1 свою тему",
+                reply_markup=limit_keyboard()
+            )
+        elif reason in ("minutes_per_day", "minutes_per_hour"):
+            await message.answer(
+                f"❌ {message_text}\n\n"
+                f"💎 Подписка {PRICE_SUBSCRIPTION} руб/мес — 180 минут в день",
+                reply_markup=limit_keyboard()
+            )
+        else:
+            await message.answer(f"❌ {message_text}")
+
+        await state.clear()
+        return
+
+    # Сохраняем лимит для последующей записи
+    await state.update_data(
+        subliminal_name=message.text,
+        voice_offset=0,
+        voice_clicks=0,
+        requested_minutes=requested_minutes,
+        is_custom_topic=is_custom_topic
+    )
+
+    # Генерим голос ОДИН РАЗ
     await message.answer("⏳ Готовлю голос...")
     voice_path = await generate_voice(affirmation, voice_type=voice_type)
+
 
     if not voice_path:
         await message.answer("❌ Не удалось создать озвучку.")
@@ -778,6 +918,11 @@ async def generate_subliminal(message: types.Message, state):
         source = data.get("source", services.affirmations.last_source)
         log_generation(message.from_user.id, source)
 
+        # Записываем использование лимита
+        requested_minutes = data.get("requested_minutes", 0)
+        is_custom_topic = data.get("is_custom_topic", False)
+        add_usage(message.from_user.id, requested_minutes, is_custom_topic)
+
         await state.update_data(subliminal_path=subliminal_path)
 
         await message.answer(
@@ -901,30 +1046,29 @@ async def back_to_publish(call: types.CallbackQuery, state):
 
 
 async def cleanup_output():
-    """Удаляет старые файлы из output/ раз в час."""
+    """Удаляет старые файлы из output/ и audio/ раз в час."""
     while True:
         await asyncio.sleep(3600)
 
-        output_dir = "output"
-        if not os.path.exists(output_dir):
-            continue
+        for folder in ["output", "audio"]:
+            if not os.path.exists(folder):
+                continue
 
-        now = time.time()
-        removed = 0
+            now = time.time()
+            removed = 0
 
-        for filename in os.listdir(output_dir):
-            filepath = os.path.join(output_dir, filename)
-            if os.path.isfile(filepath):
-                if now - os.path.getmtime(filepath) > 3600:
-                    try:
-                        os.remove(filepath)
-                        removed += 1
-                    except Exception as e:
-                        print(f"Ошибка удаления {filename}: {e}")
+            for filename in os.listdir(folder):
+                filepath = os.path.join(folder, filename)
+                if os.path.isfile(filepath):
+                    if now - os.path.getmtime(filepath) > 3600:
+                        try:
+                            os.remove(filepath)
+                            removed += 1
+                        except Exception as e:
+                            print(f"Ошибка удаления {filename}: {e}")
 
-        if removed:
-            print(f"🧹 Фоновая чистка: удалено {removed} старых файлов")
-
+            if removed:
+                print(f"🧹 Чистка {folder}: удалено {removed} файлов")
 
 async def main():
     init_db()

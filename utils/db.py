@@ -38,7 +38,21 @@ def init_db():
                 user_id INTEGER,
                 date DATE,
                 custom_topic_used INTEGER DEFAULT 0,
+                minutes_today INTEGER DEFAULT 0,
+                minutes_this_hour INTEGER DEFAULT 0,
+                hour_start TIMESTAMP,
+                last_request_time TIMESTAMP,
                 PRIMARY KEY (user_id, date)
+            )
+        """)
+
+        # Подписки
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS subscriptions (
+                user_id INTEGER PRIMARY KEY,
+                active INTEGER DEFAULT 0,
+                expires_at TIMESTAMP,
+                created_at TIMESTAMP
             )
         """)
 
@@ -166,3 +180,213 @@ def get_all_users() -> list[int]:
         c = conn.cursor()
         c.execute("SELECT user_id FROM users")
         return [row[0] for row in c.fetchall()]
+
+def has_active_subscription(user_id: int) -> bool:
+    """Проверяет, есть ли у юзера активная подписка."""
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT active, expires_at FROM subscriptions WHERE user_id = ?",
+            (user_id,)
+        )
+        row = c.fetchone()
+
+        if not row:
+            return False
+
+        active, expires_at = row
+
+        if not active:
+            return False
+
+        # Проверяем, не истекла ли
+        if expires_at:
+            expires = datetime.fromisoformat(expires_at)
+            if expires < datetime.now():
+                return False
+
+        return True
+
+
+def get_user_limits(user_id: int) -> dict:
+    """Возвращает лимиты юзера — бесплатные или платные."""
+    from config import (
+        FREE_CUSTOM_TOPICS, FREE_MINUTES_PER_DAY, FREE_MINUTES_PER_HOUR, FREE_ANTISPAM,
+        SUB_CUSTOM_TOPICS, SUB_MINUTES_PER_DAY, SUB_MINUTES_PER_HOUR, SUB_ANTISPAM,
+    )
+
+    if has_active_subscription(user_id):
+        return {
+            "custom_topics": SUB_CUSTOM_TOPICS,
+            "minutes_per_day": SUB_MINUTES_PER_DAY,
+            "minutes_per_hour": SUB_MINUTES_PER_HOUR,
+            "antispam": SUB_ANTISPAM,
+            "is_subscriber": True,
+        }
+    else:
+        return {
+            "custom_topics": FREE_CUSTOM_TOPICS,
+            "minutes_per_day": FREE_MINUTES_PER_DAY,
+            "minutes_per_hour": FREE_MINUTES_PER_HOUR,
+            "antispam": FREE_ANTISPAM,
+            "is_subscriber": False,
+        }
+
+
+def get_today_usage(user_id: int) -> dict:
+    """Возвращает текущее использование лимитов за сегодня."""
+    today = datetime.now().date().isoformat()
+
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT custom_topic_used, minutes_today, minutes_this_hour, hour_start, last_request_time "
+            "FROM user_limits WHERE user_id = ? AND date = ?",
+            (user_id, today)
+        )
+        row = c.fetchone()
+
+        if not row:
+            return {
+                "custom_topic_used": 0,
+                "minutes_today": 0,
+                "minutes_this_hour": 0,
+                "hour_start": None,
+                "last_request_time": None,
+            }
+
+        return {
+            "custom_topic_used": row[0],
+            "minutes_today": row[1],
+            "minutes_this_hour": row[2],
+            "hour_start": row[3],
+            "last_request_time": row[4],
+        }
+
+
+def check_limits(user_id: int, requested_minutes: int, is_custom_topic: bool = False) -> dict:
+    """
+    Проверяет, может ли юзер сгенерировать саблиминал.
+
+    :param user_id: ID юзера
+    :param requested_minutes: сколько минут запрашивает
+    :param is_custom_topic: используется ли «Своя тема»
+    :return: {"allowed": bool, "reason": str или None}
+    """
+    limits = get_user_limits(user_id)
+    usage = get_today_usage(user_id)
+    now = datetime.now()
+
+    # 1. Проверка лимита «Своя тема»
+    if is_custom_topic:
+        if usage["custom_topic_used"] >= limits["custom_topics"]:
+            return {
+                "allowed": False,
+                "reason": "custom_topic",
+                "message": f"Лимит на «Свою тему» исчерпан ({limits['custom_topics']} в день)."
+            }
+
+    # 2. Проверка антиспама
+    if usage["last_request_time"]:
+        last = datetime.fromisoformat(usage["last_request_time"])
+        diff = (now - last).total_seconds()
+        if diff < limits["antispam"]:
+            wait = int(limits["antispam"] - diff)
+            return {
+                "allowed": False,
+                "reason": "antispam",
+                "message": f"Подожди {wait} секунд перед новой генерацией."
+            }
+
+    # 3. Проверка часового лимита
+    hour_start = usage["hour_start"]
+    if hour_start:
+        hour_start_dt = datetime.fromisoformat(hour_start)
+        # Если час прошёл — сбрасываем часовой счётчик
+        if (now - hour_start_dt).total_seconds() >= 3600:
+            usage["minutes_this_hour"] = 0
+
+    if usage["minutes_this_hour"] + requested_minutes > limits["minutes_per_hour"]:
+        return {
+            "allowed": False,
+            "reason": "minutes_per_hour",
+            "message": f"Лимит на час исчерпан ({limits['minutes_per_hour']} минут)."
+        }
+
+    # 4. Проверка дневного лимита
+    if usage["minutes_today"] + requested_minutes > limits["minutes_per_day"]:
+        remaining = limits["minutes_per_day"] - usage["minutes_today"]
+        return {
+            "allowed": False,
+            "reason": "minutes_per_day",
+            "message": f"Лимит на день исчерпан. Осталось: {remaining} минут."
+        }
+
+    # Всё ок
+    return {"allowed": True, "reason": None, "message": None}
+
+
+def add_usage(user_id: int, minutes: int, is_custom_topic: bool = False):
+    """Записывает использование лимитов."""
+    today = datetime.now().date().isoformat()
+    now = datetime.now()
+
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+
+        # Проверяем, есть ли запись
+        c.execute(
+            "SELECT minutes_today, minutes_this_hour, hour_start FROM user_limits "
+            "WHERE user_id = ? AND date = ?",
+            (user_id, today)
+        )
+        row = c.fetchone()
+
+        if row:
+            minutes_today, minutes_this_hour, hour_start = row
+
+            # Проверяем, прошёл ли час
+            if hour_start:
+                hour_start_dt = datetime.fromisoformat(hour_start)
+                if (now - hour_start_dt).total_seconds() >= 3600:
+                    # Час прошёл — сбрасываем
+                    minutes_this_hour = 0
+                    hour_start = now.isoformat()
+
+            # Обновляем
+            c.execute(
+                "UPDATE user_limits SET "
+                "custom_topic_used = custom_topic_used + ?, "
+                "minutes_today = ?, "
+                "minutes_this_hour = ?, "
+                "hour_start = ?, "
+                "last_request_time = ? "
+                "WHERE user_id = ? AND date = ?",
+                (
+                    1 if is_custom_topic else 0,
+                    minutes_today + minutes,
+                    minutes_this_hour + minutes,
+                    hour_start if hour_start else now.isoformat(),
+                    now.isoformat(),
+                    user_id,
+                    today,
+                )
+            )
+        else:
+            # Создаём новую запись
+            c.execute(
+                "INSERT INTO user_limits "
+                "(user_id, date, custom_topic_used, minutes_today, minutes_this_hour, hour_start, last_request_time) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    user_id,
+                    today,
+                    1 if is_custom_topic else 0,
+                    minutes,
+                    minutes,
+                    now.isoformat(),
+                    now.isoformat(),
+                )
+            )
+
+        conn.commit()    
