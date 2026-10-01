@@ -39,7 +39,7 @@ ffmpeg_dir = r"C:\Users\sysin\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpe
 os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ["PATH"]
 
 from pydub import AudioSegment
-from pedalboard import Pedalboard, Reverb, LowpassFilter, HighpassFilter
+
 
 # Папка с фоновыми треками
 ASSETS_DIR = "assets"
@@ -93,38 +93,8 @@ def generate_solfeggio(duration_ms: int, freq: float = 528.0) -> AudioSegment:
 
 
 def apply_reverb(audio: AudioSegment) -> AudioSegment:
-    """Накладывает реверберацию через pedalboard."""
-    samples = np.array(audio.get_array_of_samples(), dtype=np.float32)
-    samples = samples / 32768.0
-
-    if audio.channels == 1:
-        samples = np.column_stack((samples, samples))
-    else:
-        samples = samples.reshape((-1, 2))
-
-    board = Pedalboard([
-        LowpassFilter(cutoff_frequency_hz=2000),
-        HighpassFilter(cutoff_frequency_hz=300),
-        Reverb(
-            room_size=0.75,
-            damping=0.7,
-            wet_level=0.6,
-            dry_level=0.4,
-            width=1.0,
-        ),
-    ])
-
-    processed = board(samples, audio.frame_rate)
-    processed_int16 = (processed * 32767).astype(np.int16)
-
-    result = AudioSegment(
-        processed_int16.tobytes(),
-        frame_rate=audio.frame_rate,
-        sample_width=2,
-        channels=2
-    )
-
-    return result
+    """Заглушка — реверб убран."""
+    return audio
 
 def create_subliminal(voice_path: str, category: str = "nature", custom_track: str = None, length_minutes: int = None, custom_solfeggio: int = None, custom_binaural: tuple = None, voice_offset: int = 0) -> str | None:
     """Накладывает голос на трек + бинаурал + сольфеджио."""
@@ -164,7 +134,7 @@ def create_subliminal(voice_path: str, category: str = "nature", custom_track: s
         background = background - 6
 
         # === 3. ОБРАБОТКА ГОЛОСА ===
-        voice = apply_reverb(voice)
+        #voice = apply_reverb(voice)
 
         # === 4. ОПРЕДЕЛЯЕМ ДЛИНУ ===
         if length_minutes:
