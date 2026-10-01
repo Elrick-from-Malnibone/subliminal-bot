@@ -5,7 +5,7 @@ import os
 import sqlite3
 from datetime import datetime
 
-DB_PATH = "bot.db"
+DB_PATH = os.path.join(os.getenv("DATA_DIR", "."), "bot.db")
 
 
 def init_db():
