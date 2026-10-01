@@ -6,11 +6,6 @@ import time
 import random
 import sys
 
-print("=== ЗАПУСК БОТА ===", flush=True)
-print(f"BOT_TOKEN: {'есть' if BOT_TOKEN else 'НЕТ'}", flush=True)
-print(f"WEBHOOK_URL: {os.getenv('WEBHOOK_URL', 'НЕТ')}", flush=True)
-print(f"PORT: {os.getenv('PORT', 'НЕТ')}", flush=True)
-
 from config import (
     BOT_TOKEN, ADMIN_ID,
     PRICE_SUBSCRIPTION, PRICE_CUSTOM_TOPIC, PRICE_REMOVE_SIGNATURE,
@@ -49,6 +44,12 @@ import services.affirmations
 from services.tts import generate_voice
 from services.deepseek import generate_affirmation
 from services.audio import create_subliminal
+
+print("=== ЗАПУСК БОТА ===", flush=True)
+print(f"BOT_TOKEN: {'есть' if BOT_TOKEN else 'НЕТ'}", flush=True)
+print(f"WEBHOOK_URL: {os.getenv('WEBHOOK_URL', 'НЕТ')}", flush=True)
+print(f"PORT: {os.getenv('PORT', 'НЕТ')}", flush=True)
+
 
 FREQ_INFO = {
     "money": "888 Гц (изобилие) + альфа 10 Гц (расслабление)",
