@@ -4,6 +4,12 @@ import logging
 import os
 import time
 import random
+import sys
+
+print("=== ЗАПУСК БОТА ===", flush=True)
+print(f"BOT_TOKEN: {'есть' if BOT_TOKEN else 'НЕТ'}", flush=True)
+print(f"WEBHOOK_URL: {os.getenv('WEBHOOK_URL', 'НЕТ')}", flush=True)
+print(f"PORT: {os.getenv('PORT', 'НЕТ')}", flush=True)
 
 from config import (
     BOT_TOKEN, ADMIN_ID,
@@ -85,6 +91,44 @@ TOPICS = {
     "topic_magnetism": {"key": "magnetism", "text": "магнетизм, притяжение людей, обаяние"},
 }
 
+async def main():
+    print("=== MAIN STARTED ===", flush=True)
+    init_db()
+    print("=== DB INITIALIZED ===", flush=True)
+    asyncio.create_task(cleanup_output())
+    print("=== CLEANUP TASK STARTED ===", flush=True)
+
+    webhook_url = os.getenv("WEBHOOK_URL")
+    print(f"=== WEBHOOK_URL: {webhook_url} ===", flush=True)
+
+    if webhook_url:
+        print("=== WEBHOOK MODE ===", flush=True)
+        webhook_path = "/webhook"
+        host = "0.0.0.0"
+        port = int(os.getenv("PORT", 3000))
+        print(f"=== PORT: {port} ===", flush=True)
+
+        app = web.Application()
+        webhook_requests_handler = SimpleRequestHandler(
+            dispatcher=dp,
+            bot=bot,
+        )
+        webhook_requests_handler.register(app, path=webhook_path)
+        setup_application(app, dp, bot=bot)
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, host, port)
+        await site.start()
+        print("=== SERVER STARTED ===", flush=True)
+
+        await bot.set_webhook(f"{webhook_url}")
+        print("=== WEBHOOK SET ===", flush=True)
+
+        await asyncio.Event().wait()
+    else:
+        print("=== POLLING MODE ===", flush=True)
+        await dp.start_polling(bot)
 
 @dp.message(F.text == "/rs")
 async def cmd_broadcast(message: types.Message, state):
