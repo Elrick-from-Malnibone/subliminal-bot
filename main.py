@@ -10,6 +10,8 @@ from config import (
     PRICE_SUBSCRIPTION, PRICE_CUSTOM_TOPIC, PRICE_REMOVE_SIGNATURE,
 )
 from aiogram import Bot, Dispatcher, types, F
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiohttp import web
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.filters import CommandStart
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
@@ -1072,11 +1074,40 @@ async def cleanup_output():
 
 async def main():
     init_db()
-
     asyncio.create_task(cleanup_output())
 
-    print("Бот запущен. Нажми Ctrl+C для остановки.")
-    await dp.start_polling(bot)
+    # Webhook — только если задан WEBHOOK_URL (на Bothost)
+    webhook_url = os.getenv("WEBHOOK_URL")
+
+    if webhook_url:
+        # Режим webhook
+        webhook_path = "/webhook"
+        host = "0.0.0.0"
+        port = int(os.getenv("PORT", 3000))
+
+        await bot.set_webhook(f"{webhook_url}")
+
+        app = web.Application()
+
+        webhook_requests_handler = SimpleRequestHandler(
+            dispatcher=dp,
+            bot=bot,
+        )
+        webhook_requests_handler.register(app, path=webhook_path)
+
+        setup_application(app, dp, bot=bot)
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, host, port)
+        await site.start()
+
+        print(f"✅ Бот запущен на webhook: {webhook_url}")
+        await asyncio.Event().wait()
+    else:
+        # Режим polling (локально)
+        print("Бот запущен в режиме polling.")
+        await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
