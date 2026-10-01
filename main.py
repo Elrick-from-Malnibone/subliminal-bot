@@ -337,7 +337,7 @@ async def handle_broadcast(message: types.Message, state):
     )
 
 
-@dp.callback_query(SubliminalStates.waiting_for_topic, F.data.in_(TOPICS.keys()))
+@dp.callback_query(F.data.in_(TOPICS.keys()))
 async def handle_topic(call: types.CallbackQuery, state):
     topic_data = TOPICS[call.data]
     topic_key = topic_data["key"]
@@ -353,14 +353,14 @@ async def handle_topic(call: types.CallbackQuery, state):
     await ask_affirmation(call.message, state)
 
 
-@dp.callback_query(SubliminalStates.waiting_for_topic, F.data == "topic_custom")
+@dp.callback_query(F.data == "topic_custom")
 async def handle_custom(call: types.CallbackQuery, state):
     await call.message.edit_text("Напиши, какой саблиминал ты хочешь:")
     await call.answer()
     await state.set_state(SubliminalStates.waiting_for_custom_text)
 
 
-@dp.callback_query(SubliminalStates.waiting_for_topic, F.data == "topic_custom_topic")
+@dp.callback_query(F.data == "topic_custom_topic")
 async def handle_custom_topic(call: types.CallbackQuery, state):
     
     if not can_use_custom_topic(call.from_user.id):
