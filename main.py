@@ -6,6 +6,10 @@ import time
 import random
 import sys
 
+
+# Хранилище путей к саблиминалам для публикации
+PENDING_PUBLICATIONS = {}
+
 # Логи в файл — ДО всех импортов
 LOG_FILE = os.path.join(os.getenv("DATA_DIR", "/app/data"), "bot.log")
 logging.basicConfig(
@@ -1026,21 +1030,23 @@ async def generate_subliminal_background(data: dict):
             is_custom_topic = data.get("is_custom_topic", False)
             add_usage(user_id, requested_minutes, is_custom_topic)
 
-            # Чистим файлы
-            if os.path.exists(subliminal_path):
-                os.remove(subliminal_path)
+            # Чистим только голос и свой трек
             if voice_path and os.path.exists(voice_path):
                 os.remove(voice_path)
             if custom_track and os.path.exists(custom_track):
                 os.remove(custom_track)
 
-            logger.info(f"🧹 Файлы удалены")
+            # Сохраняем путь для публикации
+            PENDING_PUBLICATIONS[user_id] = {
+                "path": subliminal_path,
+                "name": subliminal_name
+            }
 
-            # Кнопка «Хочешь ещё?»
+            # Спрашиваем про публикацию
             await bot.send_message(
                 chat_id,
-                "Хочешь ещё один?",
-                reply_markup=topics_keyboard()
+                "📢 Хочешь опубликовать свой саблиминал в канале?",
+                reply_markup=publish_keyboard()
             )
 
         else:
@@ -1123,17 +1129,14 @@ async def generate_subliminal(message: types.Message, state):
 
 @dp.callback_query(F.data == "publish_no")
 async def handle_publish_no(call: types.CallbackQuery, state):
-    data = await state.get_data()
-    subliminal_path = data.get("subliminal_path")
-    custom_track = data.get("custom_track")
-    cached_voice = data.get("cached_voice_path")
+    user_id = call.from_user.id
+    pending = PENDING_PUBLICATIONS.get(user_id)
 
-    if subliminal_path and os.path.exists(subliminal_path):
-        os.remove(subliminal_path)
-    if custom_track and os.path.exists(custom_track):
-        os.remove(custom_track)
-    if cached_voice and os.path.exists(cached_voice):
-        os.remove(cached_voice)
+    if pending:
+        subliminal_path = pending["path"]
+        if subliminal_path and os.path.exists(subliminal_path):
+            os.remove(subliminal_path)
+        PENDING_PUBLICATIONS.pop(user_id, None)
 
     await call.message.edit_text("Ок, не публикуем. Хочешь ещё один?")
     await call.answer()
@@ -1168,16 +1171,23 @@ async def handle_pub_named(call: types.CallbackQuery, state):
 async def publish_subliminal(call: types.CallbackQuery, state, anonymous: bool):
     from config import CHANNEL_ID
 
-    data = await state.get_data()
-    subliminal_path = data.get("subliminal_path")
-    subliminal_name = data.get("subliminal_name", "Саблиминал")
-    custom_track = data.get("custom_track")
-    cached_voice = data.get("cached_voice_path")
+    user_id = call.from_user.id
+
+    # Берём путь из словаря
+    pending = PENDING_PUBLICATIONS.get(user_id)
+
+    if not pending:
+        await call.message.edit_text("❌ Файл не найден. Попробуй заново.")
+        await call.answer()
+        return
+
+    subliminal_path = pending["path"]
+    subliminal_name = pending["name"]
 
     if not subliminal_path or not os.path.exists(subliminal_path):
-        await call.message.edit_text("❌ Файл потерялся. Начни заново — /start")
+        await call.message.edit_text("❌ Файл потерялся. Попробуй заново.")
         await call.answer()
-        await state.clear()
+        PENDING_PUBLICATIONS.pop(user_id, None)
         return
 
     try:
@@ -1211,12 +1221,10 @@ async def publish_subliminal(call: types.CallbackQuery, state, anonymous: bool):
     # Чистка
     if subliminal_path and os.path.exists(subliminal_path):
         os.remove(subliminal_path)
-    if custom_track and os.path.exists(custom_track):
-        os.remove(custom_track)
-    if cached_voice and os.path.exists(cached_voice):
-        os.remove(cached_voice)
 
-    await state.clear()
+    # Убираем из словаря
+    PENDING_PUBLICATIONS.pop(user_id, None)
+
     await call.message.answer(
         "Хочешь ещё один?",
         reply_markup=topics_keyboard()
@@ -1233,9 +1241,9 @@ async def back_to_publish(call: types.CallbackQuery, state):
 
 
 async def cleanup_output():
-    """Удаляет старые файлы из output/ и audio/ раз в час."""
+    """Удаляет старые файлы из output/ и audio/ раз в 15 минут."""
     while True:
-        await asyncio.sleep(3600)
+        await asyncio.sleep(900)
 
         for folder in ["output", "audio"]:
             if not os.path.exists(folder):
@@ -1247,7 +1255,7 @@ async def cleanup_output():
             for filename in os.listdir(folder):
                 filepath = os.path.join(folder, filename)
                 if os.path.isfile(filepath):
-                    if now - os.path.getmtime(filepath) > 3600:
+                    if now - os.path.getmtime(filepath) > 900:
                         try:
                             os.remove(filepath)
                             removed += 1
