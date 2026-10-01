@@ -679,8 +679,8 @@ async def handle_length(call: types.CallbackQuery, state):
         length_minutes = 5
     elif length_code == "10":
         length_minutes = 10
-    elif length_code == "30":
-        length_minutes = 30
+    elif length_code == "15":
+        length_minutes = 15
     else:
         length_minutes = None
 
@@ -911,8 +911,102 @@ async def handle_voice_done(call: types.CallbackQuery, state):
     await call.message.delete()
     await call.answer()
 
-    await call.message.answer("✅ Готово! Собираю полный саблиминал...")
-    await generate_subliminal(call.message, state)
+    # Сохраняем user_id и chat_id для фоновой задачи
+    data["user_id"] = call.from_user.id
+    data["chat_id"] = call.message.chat.id
+
+    # Копируем данные (state очистится)
+    data_copy = dict(data)
+
+    await call.message.answer(
+        "✅ Готово! Генерация идёт в фоне.\n\n"
+        "Я пришлю саблиминал, когда он будет готов. "
+        "Можешь пока пользоваться ботом."
+    )
+
+    # Запускаем в фоне
+    asyncio.create_task(generate_subliminal_background(data_copy))
+
+    await state.clear()
+
+async def generate_subliminal_background(data: dict):
+    """Генерирует саблиминал в фоне и присылает юзеру."""
+    try:
+        chat_id = data.get("chat_id")
+        user_id = data.get("user_id")
+        category = data.get("category", "nature")
+        custom_track = data.get("custom_track")
+        length_minutes = data.get("length_minutes")
+        custom_solfeggio = data.get("custom_solfeggio")
+        custom_binaural = data.get("custom_binaural")
+        voice_offset = data.get("voice_offset", 0)
+        voice_path = data.get("cached_voice_path")
+        chosen_track = data.get("chosen_track")
+        subliminal_name = data.get("subliminal_name", "Твой саблиминал")
+
+        # Проверяем голос
+        if not voice_path or not os.path.exists(voice_path):
+            await bot.send_message(chat_id, "❌ Голос потерялся. Начни заново — /start")
+            return
+
+        # Собираем саблиминал
+        if custom_track:
+            subliminal_path = await asyncio.to_thread(
+                create_subliminal, voice_path, None, custom_track, length_minutes,
+                custom_solfeggio, custom_binaural, voice_offset
+            )
+        elif chosen_track:
+            track_path = os.path.join("assets", category, chosen_track)
+            subliminal_path = await asyncio.to_thread(
+                create_subliminal, voice_path, None, track_path, length_minutes,
+                custom_solfeggio, custom_binaural, voice_offset
+            )
+        else:
+            subliminal_path = await asyncio.to_thread(
+                create_subliminal, voice_path, category, None, length_minutes,
+                custom_solfeggio, custom_binaural, voice_offset
+            )
+
+        # Отправляем
+        if subliminal_path and os.path.exists(subliminal_path):
+            audio_file = FSInputFile(subliminal_path)
+            await bot.send_audio(
+                chat_id=chat_id,
+                audio=audio_file,
+                title=subliminal_name,
+                caption="🎧 Сделано в @SubliminalGenBot"
+            )
+
+            # Логируем
+            source = data.get("source", "unknown")
+            log_generation(user_id, source)
+
+            # Записываем лимит
+            requested_minutes = data.get("requested_minutes", 0)
+            is_custom_topic = data.get("is_custom_topic", False)
+            add_usage(user_id, requested_minutes, is_custom_topic)
+
+            # Чистим файлы
+            if os.path.exists(subliminal_path):
+                os.remove(subliminal_path)
+            if voice_path and os.path.exists(voice_path):
+                os.remove(voice_path)
+            if custom_track and os.path.exists(custom_track):
+                os.remove(custom_track)
+
+            # Кнопка «Хочешь ещё?»
+            await bot.send_message(
+                chat_id,
+                "Хочешь ещё один?",
+                reply_markup=topics_keyboard()
+            )
+
+        else:
+            await bot.send_message(chat_id, "❌ Не удалось собрать саблиминал.")
+
+    except Exception as e:
+        print(f"Ошибка фоновой генерации: {e}")
+        await bot.send_message(chat_id, f"❌ Ошибка: {e}")    
 
 
 async def generate_subliminal(message: types.Message, state):

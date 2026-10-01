@@ -72,14 +72,13 @@ def affirmation_keyboard():
     ])
 
 def lengths_keyboard():
-    """Клавиатура выбора длины саблиминала."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="5 минут", callback_data="len_5"),
             InlineKeyboardButton(text="10 минут", callback_data="len_10"),
+            InlineKeyboardButton(text="15 минут", callback_data="len_15"),
         ],
         [
-            InlineKeyboardButton(text="30 минут", callback_data="len_30"),
             InlineKeyboardButton(text="По длине трека", callback_data="len_track"),
         ],
         [
