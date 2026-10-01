@@ -349,15 +349,15 @@ async def handle_custom(call: types.CallbackQuery, state):
 
 @dp.callback_query(SubliminalStates.waiting_for_topic, F.data == "topic_custom_topic")
 async def handle_custom_topic(call: types.CallbackQuery, state):
-    # Лимит временно отключён
-    # if not can_use_custom_topic(call.from_user.id):
-    #     await call.message.edit_text(
-    #         "❌ Лимит на «Свою тему» исчерпан.\n\n"
-    #         "Можно использовать только 1 раз в день.\n"
-    #         "Попробуй завтра или выбери готовую тему."
-    #     )
-    #     await call.answer()
-    #     return
+    
+    if not can_use_custom_topic(call.from_user.id):
+         await call.message.edit_text(
+             "❌ Лимит на «Свою тему» исчерпан.\n\n"
+             "Можно использовать только 1 раз в день.\n"
+             "Попробуй завтра или выбери готовую тему."
+         )
+         await call.answer()
+         return
 
     await call.message.edit_text(
         "🎯 Напиши свою тему — то, чего нет в готовом списке.\n\n"
@@ -373,15 +373,15 @@ async def handle_custom_topic(call: types.CallbackQuery, state):
 
 @dp.message(SubliminalStates.waiting_for_custom_topic)
 async def handle_custom_topic_text(message: types.Message, state):
-    # Лимит временно отключён
-    # if not can_use_custom_topic(message.from_user.id):
-    #     await message.answer(
-    #         "❌ Лимит на «Свою тему» исчерпан.\n\n"
-    #         "Можно использовать только 1 раз в день.\n"
-    #         "Попробуй завтра или выбери готовую тему."
-    #     )
-    #     await state.clear()
-    #     return
+    # Проверяем лимит
+    if not can_use_custom_topic(message.from_user.id):
+        await message.answer(
+            "❌ Лимит на «Свою тему» исчерпан.\n\n"
+            "Можно использовать только 1 раз в день.\n"
+            "Попробуй завтра или выбери готовую тему."
+        )
+        await state.clear()
+        return
 
     if len(message.text) > 500:
         await message.answer(
@@ -392,6 +392,9 @@ async def handle_custom_topic_text(message: types.Message, state):
 
     user_topic = message.text
     await state.update_data(topic=user_topic)
+
+    # Отмечаем, что юзер использовал «Свою тему»
+    mark_custom_topic_used(message.from_user.id)
 
     status = await message.answer("⏳ Генерирую аффирмации под твой запрос...")
 
