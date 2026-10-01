@@ -6,6 +6,18 @@ import time
 import random
 import sys
 
+# Логи в файл — ДО всех импортов
+LOG_FILE = os.path.join(os.getenv("DATA_DIR", "/app/data"), "bot.log")
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 from config import (
     BOT_TOKEN, ADMIN_ID,
     PRICE_SUBSCRIPTION, PRICE_CUSTOM_TOPIC, PRICE_REMOVE_SIGNATURE,
@@ -47,17 +59,7 @@ from services.audio import create_subliminal
 
 
 
-# Логи в файл
-LOG_FILE = os.path.join(os.getenv("DATA_DIR", "/app/data"), "bot.log")
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding='utf-8'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+
 
 print("=== ЗАПУСК БОТА ===", flush=True)
 print(f"BOT_TOKEN: {'есть' if BOT_TOKEN else 'НЕТ'}", flush=True)
