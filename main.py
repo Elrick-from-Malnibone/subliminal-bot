@@ -393,8 +393,6 @@ async def handle_custom_topic_text(message: types.Message, state):
     user_topic = message.text
     await state.update_data(topic=user_topic)
 
-    mark_custom_topic_used(message.from_user.id)
-
     status = await message.answer("⏳ Генерирую аффирмации под твой запрос...")
 
     affirmation = await asyncio.to_thread(generate_affirmation, user_topic)
