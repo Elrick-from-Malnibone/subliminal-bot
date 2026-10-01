@@ -161,7 +161,7 @@ def create_subliminal(voice_path: str, category: str = "nature", custom_track: s
                 # === 6. ПРИВЯЗКА ГОЛОСА К ФОНУ ===
         bg_volume = background.dBFS
         voice_volume = voice.dBFS
-        target_voice_volume = bg_volume - 25 + voice_offset
+        target_voice_volume = bg_volume - 30 + voice_offset
 
         
 
@@ -212,7 +212,7 @@ def create_subliminal(voice_path: str, category: str = "nature", custom_track: s
 
             bg_vol = background.dBFS
             sol_vol = solfeggio.dBFS
-            target_sol_vol = bg_vol - 45
+            target_sol_vol = bg_vol - 48
 
             if target_sol_vol < -60:
                 target_sol_vol = -60
