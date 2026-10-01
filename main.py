@@ -959,12 +959,17 @@ async def generate_subliminal_background(data: dict):
         chosen_track = data.get("chosen_track")
         subliminal_name = data.get("subliminal_name", "Твой саблиминал")
 
+        logger.info(f"🎬 СТАРТ ГЕНЕРАЦИИ: {subliminal_name}, {length_minutes} мин")
+
         # Проверяем голос
         if not voice_path or not os.path.exists(voice_path):
+            logger.error(f"❌ Голос потерялся: {voice_path}")
             await bot.send_message(chat_id, "❌ Голос потерялся. Начни заново — /start")
             return
 
         # Собираем саблиминал
+        start_gen = time.time()
+
         if custom_track:
             subliminal_path = await asyncio.to_thread(
                 create_subliminal, voice_path, None, custom_track, length_minutes,
@@ -982,15 +987,31 @@ async def generate_subliminal_background(data: dict):
                 custom_solfeggio, custom_binaural, voice_offset
             )
 
+        gen_time = time.time() - start_gen
+        logger.info(f"🎬 ГЕНЕРАЦИЯ ЗАВЕРШЕНА за {gen_time:.1f} сек")
+
         # Отправляем
         if subliminal_path and os.path.exists(subliminal_path):
+            size_mb = os.path.getsize(subliminal_path) / 1024 / 1024
+            logger.info(f"📤 ФАЙЛ: {subliminal_path}, размер {size_mb:.1f} МБ")
+
             audio_file = FSInputFile(subliminal_path)
-            await bot.send_audio(
-                chat_id=chat_id,
-                audio=audio_file,
-                title=subliminal_name,
-                caption="🎧 Сделано в @SubliminalGenBot"
-            )
+
+            start_send = time.time()
+            try:
+                await bot.send_audio(
+                    chat_id=chat_id,
+                    audio=audio_file,
+                    title=subliminal_name,
+                    caption="🎧 Сделано в @SubliminalGenBot"
+                )
+                send_time = time.time() - start_send
+                logger.info(f"✅ ОТПРАВЛЕНО за {send_time:.1f} сек")
+
+            except Exception as e:
+                send_time = time.time() - start_send
+                logger.error(f"❌ ОШИБКА ОТПРАВКИ через {send_time:.1f} сек: {e}")
+                raise
 
             # Логируем
             source = data.get("source", "unknown")
@@ -1009,6 +1030,8 @@ async def generate_subliminal_background(data: dict):
             if custom_track and os.path.exists(custom_track):
                 os.remove(custom_track)
 
+            logger.info(f"🧹 Файлы удалены")
+
             # Кнопка «Хочешь ещё?»
             await bot.send_message(
                 chat_id,
@@ -1017,13 +1040,14 @@ async def generate_subliminal_background(data: dict):
             )
 
         else:
+            logger.error(f"❌ Саблиминал не создан: {subliminal_path}")
             await bot.send_message(chat_id, "❌ Не удалось собрать саблиминал.")
 
     except Exception as e:
         logger.error(f"❌ ОШИБКА ФОНОВОЙ ГЕНЕРАЦИИ: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        await bot.send_message(chat_id, f"❌ Ошибка: {e}")  
+        await bot.send_message(chat_id, f"❌ Ошибка: {e}")
 
 
 async def generate_subliminal(message: types.Message, state):
