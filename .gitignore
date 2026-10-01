@@ -19,8 +19,7 @@ output/
 cache/
 assets/user/
 
-# Превью (если хочешь не коммитить)
-assets/previews/
+
 
 # IDE
 .vscode/
