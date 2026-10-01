@@ -1076,7 +1076,6 @@ async def main():
     init_db()
     asyncio.create_task(cleanup_output())
 
-    # Webhook — только если задан WEBHOOK_URL (на Bothost)
     webhook_url = os.getenv("WEBHOOK_URL")
 
     if webhook_url:
@@ -1084,8 +1083,6 @@ async def main():
         webhook_path = "/webhook"
         host = "0.0.0.0"
         port = int(os.getenv("PORT", 3000))
-
-        await bot.set_webhook(f"{webhook_url}")
 
         app = web.Application()
 
@@ -1102,10 +1099,12 @@ async def main():
         site = web.TCPSite(runner, host, port)
         await site.start()
 
+        # Регистрируем webhook ПОСЛЕ старта сервера
+        await bot.set_webhook(f"{webhook_url}")
+
         print(f"✅ Бот запущен на webhook: {webhook_url}")
         await asyncio.Event().wait()
     else:
-        # Режим polling (локально)
         print("Бот запущен в режиме polling.")
         await dp.start_polling(bot)
 
