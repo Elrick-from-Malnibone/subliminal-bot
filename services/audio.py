@@ -49,11 +49,12 @@ OUTPUT_DIR = "output"
 
 
 def generate_binaural(duration_ms: int, freq_left: float = 200.0, freq_right: float = 210.0) -> AudioSegment:
-    """Генерирует бинауральный ритм через numpy."""
+    """Генерирует бинауральный ритм через numpy. 1 секунда + зацикливание."""
     sample_rate = 44100
-    n_samples = int(sample_rate * duration_ms / 1000)
 
-    t = np.linspace(0, duration_ms / 1000, n_samples, False)
+    # Генерим только 1 секунду
+    n_samples = sample_rate
+    t = np.linspace(0, 1, n_samples, False)
 
     left = np.sin(freq_left * 2 * np.pi * t)
     right = np.sin(freq_right * 2 * np.pi * t)
@@ -61,35 +62,40 @@ def generate_binaural(duration_ms: int, freq_left: float = 200.0, freq_right: fl
     stereo = np.column_stack((left, right))
     stereo_int16 = (stereo * 32767).astype(np.int16)
 
-    audio = AudioSegment(
+    one_sec = AudioSegment(
         stereo_int16.tobytes(),
         frame_rate=sample_rate,
         sample_width=2,
         channels=2
     )
 
-    return audio
+    # Зацикливаем до нужной длины
+    loops = (duration_ms // 1000) + 1
+    return one_sec * loops
 
 
 def generate_solfeggio(duration_ms: int, freq: float = 528.0) -> AudioSegment:
-    """Генерирует сольфеджио-частоту (один тон в оба канала)."""
+    """Генерирует сольфеджио-частоту. 1 секунда + зацикливание."""
     sample_rate = 44100
-    n_samples = int(sample_rate * duration_ms / 1000)
 
-    t = np.linspace(0, duration_ms / 1000, n_samples, False)
+    # Генерим только 1 секунду
+    n_samples = sample_rate
+    t = np.linspace(0, 1, n_samples, False)
 
     tone = np.sin(freq * 2 * np.pi * t)
     stereo = np.column_stack((tone, tone))
     stereo_int16 = (stereo * 32767).astype(np.int16)
 
-    audio = AudioSegment(
+    one_sec = AudioSegment(
         stereo_int16.tobytes(),
         frame_rate=sample_rate,
         sample_width=2,
         channels=2
     )
 
-    return audio
+    # Зацикливаем до нужной длины
+    loops = (duration_ms // 1000) + 1
+    return one_sec * loops
 
 
 def apply_reverb(audio: AudioSegment) -> AudioSegment:
@@ -215,8 +221,14 @@ def create_subliminal(voice_path: str, category: str = "nature", custom_track: s
 
             final = final.overlay(solfeggio)
 
-        # === 11. FADE OUT ===
-        final = final.fade_out(5000)
+        # === 11. FADE OUT — только к последним 5 секундам ===
+        if len(final) > 5000:
+            main_part = final[:-5000]
+            fade_part = final[-5000:]
+            fade_part = fade_part.fade_out(5000)
+            final = main_part + fade_part
+        else:
+            final = final.fade_out(5000)
 
         # === 12. ЭКСПОРТ ===
         original_name = os.path.splitext(os.path.basename(background_path))[0]
