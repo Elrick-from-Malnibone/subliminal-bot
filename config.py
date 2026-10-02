@@ -36,9 +36,9 @@ SUB_MINUTES_PER_HOUR = 90    # минут в час
 SUB_ANTISPAM = 10            # секунд между генерациями
 
 # === ЦЕНЫ (тестовые — 1 руб) ===
-PRICE_SUBSCRIPTION = 1       # подписка
-PRICE_CUSTOM_TOPIC = 1       # разовая своя тема
-PRICE_REMOVE_SIGNATURE = 1   # убрать подпись с 1 саба
+PRICE_SUBSCRIPTION = 300      # подписка
+PRICE_CUSTOM_TOPIC = 50       # разовая своя тема
+PRICE_REMOVE_SIGNATURE = 30   # убрать подпись с 1 саба
 
 # ЮKassa
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
