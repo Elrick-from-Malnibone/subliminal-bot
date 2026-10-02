@@ -6,3 +6,4 @@ python-dotenv
 edge-tts
 pydub
 numpy
+yookassa

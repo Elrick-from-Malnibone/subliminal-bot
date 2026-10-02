@@ -39,3 +39,7 @@ SUB_ANTISPAM = 10            # секунд между генерациями
 PRICE_SUBSCRIPTION = 1       # подписка
 PRICE_CUSTOM_TOPIC = 1       # разовая своя тема
 PRICE_REMOVE_SIGNATURE = 1   # убрать подпись с 1 саба
+
+# ЮKassa
+YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
+YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")

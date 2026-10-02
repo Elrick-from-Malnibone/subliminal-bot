@@ -37,7 +37,11 @@ from utils.db import (
     can_use_custom_topic, mark_custom_topic_used, get_all_users,
     has_active_subscription, get_user_limits, get_today_usage,
     check_limits, add_usage,
+    activate_subscription, remove_signature_for_user, has_no_signature,
+    add_extra_custom_topics, use_extra_custom_topic,
 )
+from services.payments import create_payment, check_payment
+
 from config import BOT_TOKEN, ADMIN_ID
 from states.fsm import SubliminalStates
 from keyboards.inline import (
@@ -254,11 +258,30 @@ async def cmd_subscribe(message: types.Message, state):
 
 @dp.callback_query(F.data == "pay_subscription")
 async def handle_pay_subscription(call: types.CallbackQuery, state):
-    """Заглушка оплаты подписки (пока ЮKassa не подключена)."""
+    """Создаёт платёж на подписку."""
+    user_id = call.from_user.id
+
+    payment = await asyncio.to_thread(
+        create_payment,
+        PRICE_SUBSCRIPTION,
+        "Подписка на саблиминал-бот (30 дней)",
+        user_id,
+        "subscription"
+    )
+
+    if not payment:
+        await call.message.edit_text(
+            "❌ Не удалось создать платёж. Попробуй позже.",
+            reply_markup=back_to_subscribe_keyboard()
+        )
+        await call.answer()
+        return
+
     await call.message.edit_text(
         f"💎 Подписка — {PRICE_SUBSCRIPTION} руб/мес\n\n"
-        f"⏳ Оплата временно недоступна.\n"
-        f"Скоро подключим 👌",
+        f"Перейди по ссылке для оплаты:\n"
+        f"{payment['confirmation_url']}\n\n"
+        f"После оплаты подписка активируется автоматически.",
         reply_markup=back_to_subscribe_keyboard()
     )
     await call.answer()
@@ -266,11 +289,30 @@ async def handle_pay_subscription(call: types.CallbackQuery, state):
 
 @dp.callback_query(F.data == "pay_custom_topic")
 async def handle_pay_custom_topic(call: types.CallbackQuery, state):
-    """Заглушка оплаты разовой своей темы."""
+    """Создаёт платёж на разовую свою тему."""
+    user_id = call.from_user.id
+
+    payment = await asyncio.to_thread(
+        create_payment,
+        PRICE_CUSTOM_TOPIC,
+        "Разовая своя тема (1 шт)",
+        user_id,
+        "custom_topic"
+    )
+
+    if not payment:
+        await call.message.edit_text(
+            "❌ Не удалось создать платёж. Попробуй позже.",
+            reply_markup=back_to_subscribe_keyboard()
+        )
+        await call.answer()
+        return
+
     await call.message.edit_text(
         f"💳 1 своя тема — {PRICE_CUSTOM_TOPIC} руб\n\n"
-        f"⏳ Оплата временно недоступна.\n"
-        f"Скоро подключим 👌",
+        f"Перейди по ссылке для оплаты:\n"
+        f"{payment['confirmation_url']}\n\n"
+        f"После оплаты доступ активируется автоматически.",
         reply_markup=back_to_subscribe_keyboard()
     )
     await call.answer()
@@ -278,14 +320,32 @@ async def handle_pay_custom_topic(call: types.CallbackQuery, state):
 
 @dp.callback_query(F.data == "pay_remove_signature")
 async def handle_pay_remove_signature(call: types.CallbackQuery, state):
-    """Заглушка оплаты убрать подпись."""
+    """Создаёт платёж на убирание подписи."""
+    user_id = call.from_user.id
+
+    payment = await asyncio.to_thread(
+        create_payment,
+        PRICE_REMOVE_SIGNATURE,
+        "Убрать подпись с саблиминала",
+        user_id,
+        "remove_signature"
+    )
+
+    if not payment:
+        await call.message.edit_text(
+            "❌ Не удалось создать платёж. Попробуй позже.",
+            reply_markup=back_to_subscribe_keyboard()
+        )
+        await call.answer()
+        return
+
     await call.message.edit_text(
         f"💳 Убрать подпись с 1 саба — {PRICE_REMOVE_SIGNATURE} руб\n\n"
-        f"⏳ Оплата временно недоступна.\n"
-        f"Скоро подключим 👌",
+        f"Перейди по ссылке для оплаты:\n"
+        f"{payment['confirmation_url']}",
         reply_markup=back_to_subscribe_keyboard()
     )
-    await call.answer()    
+    await call.answer()
 
 
 @dp.callback_query(F.data == "subscribe")
@@ -412,7 +472,25 @@ async def handle_custom_topic_text(message: types.Message, state):
     user_topic = message.text
     await state.update_data(topic=user_topic)
 
-    # Отмечаем, что юзер использовал «Свою тему»
+        # Проверяем, использовал ли лимит
+    from utils.db import get_today_usage, get_user_limits, use_extra_custom_topic
+
+    usage = get_today_usage(message.from_user.id)
+    limits = get_user_limits(message.from_user.id)
+
+    if usage["custom_topic_used"] >= limits["custom_topics"]:
+        # Лимит исчерпан — пробуем разовую
+        if use_extra_custom_topic(message.from_user.id):
+            logger.info(f"✅ Использована разовая тема для {message.from_user.id}")
+        else:
+            await message.answer(
+                "❌ Лимит на «Свою тему» исчерпан.\n\n"
+                "Купи разовую тему за 50 руб или подписку за 300 руб/мес."
+            )
+            await state.clear()
+            return
+
+    # Отмечаем использование
     mark_custom_topic_used(message.from_user.id)
 
     status = await message.answer("⏳ Генерирую аффирмации под твой запрос...")
@@ -1003,6 +1081,12 @@ async def generate_subliminal_background(data: dict):
             size_mb = os.path.getsize(subliminal_path) / 1024 / 1024
             logger.info(f"📤 ФАЙЛ: {subliminal_path}, размер {size_mb:.1f} МБ")
 
+            # Проверяем, нужна ли подпись
+            if has_active_subscription(user_id) or has_no_signature(user_id):
+                caption = f"🎧 {subliminal_name}"
+            else:
+                caption = f"🎧 {subliminal_name}\n\n🤖 Сделано в @SubliminalGenBot"
+
             audio_file = FSInputFile(subliminal_path)
 
             start_send = time.time()
@@ -1011,7 +1095,7 @@ async def generate_subliminal_background(data: dict):
                     chat_id=chat_id,
                     audio=audio_file,
                     title=subliminal_name,
-                    caption="🎧 Сделано в @SubliminalGenBot"
+                    caption=caption
                 )
                 send_time = time.time() - start_send
                 logger.info(f"✅ ОТПРАВЛЕНО за {send_time:.1f} сек")
@@ -1200,7 +1284,9 @@ async def publish_subliminal(call: types.CallbackQuery, state, anonymous: bool):
             else:
                 caption = f"🎧 {subliminal_name}\n\n👤 {call.from_user.full_name}"
 
-        caption += "\n\n🤖 Сделано в @SubliminalGenBot"
+                # Подпись бота — если нет подписки
+        if not (has_active_subscription(call.from_user.id) or has_no_signature(call.from_user.id)):
+            caption += "\n\n🤖 Сделано в @SubliminalGenBot"
 
         audio_file = FSInputFile(subliminal_path)
         await bot.send_audio(
@@ -1230,6 +1316,67 @@ async def publish_subliminal(call: types.CallbackQuery, state, anonymous: bool):
         reply_markup=topics_keyboard()
     )
     await state.set_state(SubliminalStates.waiting_for_topic)
+
+async def handle_yookassa_event(event: dict):
+    """Обрабатывает уведомление от ЮKassa об оплате."""
+    try:
+        event_type = event.get("event")
+        payment_obj = event.get("object", {})
+
+        # Обрабатываем только успешные платежи
+        if event_type != "payment.succeeded":
+            return
+
+        # Достаём метаданные
+        metadata = payment_obj.get("metadata", {})
+        user_id = metadata.get("user_id")
+        payment_type = metadata.get("payment_type")
+
+        if not user_id or not payment_type:
+            logger.error(f"Нет user_id или payment_type в metadata: {metadata}")
+            return
+
+        user_id = int(user_id)
+
+        logger.info(f"💰 ОПЛАТА: user_id={user_id}, type={payment_type}")
+
+        # Активируем в зависимости от типа
+        if payment_type == "subscription":
+            activate_subscription(user_id, days=30)
+            logger.info(f"✅ Подписка активирована для {user_id}")
+
+            await bot.send_message(
+                user_id,
+                "✅ Подписка активирована на 30 дней!\n\n"
+                "Теперь у тебя:\n"
+                "— 10 своих тем в день\n"
+                "— 180 минут саблиминалов в день\n"
+                "— Без подписи бота\n"
+                "— Приоритетная генерация"
+            )
+
+        elif payment_type == "custom_topic":
+            add_extra_custom_topics(user_id, count=1)
+            logger.info(f"✅ Разовая тема начислена для {user_id}")
+            await bot.send_message(
+                user_id,
+                "✅ Разовая тема оплачена!\n\n"
+                "Можешь использовать её в боте."
+            )
+
+        elif payment_type == "remove_signature":
+            remove_signature_for_user(user_id)
+            logger.info(f"✅ Подпись убрана для {user_id}")
+            await bot.send_message(
+                user_id,
+                "✅ Подпись убрана!\n\n"
+                "Теперь саблиминалы будут без подписи бота."
+            )
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка обработки вебхука: {e}")
+        import traceback
+        logger.error(traceback.format_exc())    
 
 @dp.callback_query(F.data == "back_to_publish")
 async def back_to_publish(call: types.CallbackQuery, state):
@@ -1286,6 +1433,17 @@ async def main():
         webhook_requests_handler.register(app, path=webhook_path)
 
         setup_application(app, dp, bot=bot)
+
+        # Обработчик вебхука ЮKassa
+        async def yookassa_webhook(request):
+            try:
+                event = await request.json()
+                await handle_yookassa_event(event)
+            except Exception as e:
+                print(f"Ошибка обработки вебхука ЮKassa: {e}")
+            return web.Response(status=200)
+
+        app.router.add_post("/yookassa_webhook", yookassa_webhook)
 
         runner = web.AppRunner(app)
         await runner.setup()

@@ -44,6 +44,7 @@ def init_db():
                 minutes_this_hour INTEGER DEFAULT 0,
                 hour_start TIMESTAMP,
                 last_request_time TIMESTAMP,
+                extra_custom_topics INTEGER DEFAULT 0,
                 PRIMARY KEY (user_id, date)
             )
         """)
@@ -53,6 +54,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS subscriptions (
                 user_id INTEGER PRIMARY KEY,
                 active INTEGER DEFAULT 0,
+                no_signature INTEGER DEFAULT 0,
                 expires_at TIMESTAMP,
                 created_at TIMESTAMP
             )
@@ -242,7 +244,7 @@ def get_today_usage(user_id: int) -> dict:
     with sqlite3.connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute(
-            "SELECT custom_topic_used, minutes_today, minutes_this_hour, hour_start, last_request_time "
+            "SELECT custom_topic_used, minutes_today, minutes_this_hour, hour_start, last_request_time, extra_custom_topics "
             "FROM user_limits WHERE user_id = ? AND date = ?",
             (user_id, today)
         )
@@ -255,6 +257,7 @@ def get_today_usage(user_id: int) -> dict:
                 "minutes_this_hour": 0,
                 "hour_start": None,
                 "last_request_time": None,
+                "extra_custom_topics": 0,
             }
 
         return {
@@ -263,6 +266,7 @@ def get_today_usage(user_id: int) -> dict:
             "minutes_this_hour": row[2],
             "hour_start": row[3],
             "last_request_time": row[4],
+            "extra_custom_topics": row[5],
         }
 
 
@@ -279,14 +283,19 @@ def check_limits(user_id: int, requested_minutes: int, is_custom_topic: bool = F
     usage = get_today_usage(user_id)
     now = datetime.now()
 
-    # 1. Проверка лимита «Своя тема»
+        # 1. Проверка лимита «Своя тема»
     if is_custom_topic:
         if usage["custom_topic_used"] >= limits["custom_topics"]:
-            return {
-                "allowed": False,
-                "reason": "custom_topic",
-                "message": f"Лимит на «Свою тему» исчерпан ({limits['custom_topics']} в день)."
-            }
+            # Проверяем разовые темы
+            if usage.get("extra_custom_topics", 0) > 0:
+                # Есть разовая — разрешаем, спишем позже
+                pass
+            else:
+                return {
+                    "allowed": False,
+                    "reason": "custom_topic",
+                    "message": f"Лимит на «Свою тему» исчерпан ({limits['custom_topics']} в день)."
+                }
 
     # 2. Проверка антиспама
     if usage["last_request_time"]:
@@ -392,3 +401,123 @@ def add_usage(user_id: int, minutes: int, is_custom_topic: bool = False):
             )
 
         conn.commit()    
+
+def activate_subscription(user_id: int, days: int = 30):
+    """Активирует подписку на N дней."""
+    from datetime import timedelta
+
+    expires_at = datetime.now() + timedelta(days=days)
+
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+
+        c.execute(
+            "SELECT 1 FROM subscriptions WHERE user_id = ?",
+            (user_id,)
+        )
+        exists = c.fetchone()
+
+        if exists:
+            c.execute(
+                "UPDATE subscriptions SET active = 1, expires_at = ? WHERE user_id = ?",
+                (expires_at.isoformat(), user_id)
+            )
+        else:
+            c.execute(
+                "INSERT INTO subscriptions (user_id, active, expires_at, created_at) "
+                "VALUES (?, 1, ?, ?)",
+                (user_id, expires_at.isoformat(), datetime.now().isoformat())
+            )
+
+        conn.commit()
+
+
+def remove_signature_for_user(user_id: int):
+    """Ставит флаг: юзер купил убрать подпись навсегда."""
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+
+        c.execute("SELECT 1 FROM subscriptions WHERE user_id = ?", (user_id,))
+        exists = c.fetchone()
+
+        if exists:
+            c.execute(
+                "UPDATE subscriptions SET no_signature = 1 WHERE user_id = ?",
+                (user_id,)
+            )
+        else:
+            c.execute(
+                "INSERT INTO subscriptions (user_id, active, no_signature, created_at) "
+                "VALUES (?, 0, 1, ?)",
+                (user_id, datetime.now().isoformat())
+            )
+
+        conn.commit()
+
+
+def has_no_signature(user_id: int) -> bool:
+    """Проверяет, куплено ли убирание подписи."""
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT no_signature FROM subscriptions WHERE user_id = ?",
+            (user_id,)
+        )
+        row = c.fetchone()
+
+        if not row:
+            return False
+
+        return row[0] == 1       
+
+def add_extra_custom_topics(user_id: int, count: int = 1):
+    """Начисляет разовые темы (после оплаты)."""
+    today = datetime.now().date().isoformat()
+
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+
+        c.execute(
+            "SELECT 1 FROM user_limits WHERE user_id = ? AND date = ?",
+            (user_id, today)
+        )
+        exists = c.fetchone()
+
+        if exists:
+            c.execute(
+                "UPDATE user_limits SET extra_custom_topics = extra_custom_topics + ? "
+                "WHERE user_id = ? AND date = ?",
+                (count, user_id, today)
+            )
+        else:
+            c.execute(
+                "INSERT INTO user_limits (user_id, date, extra_custom_topics) VALUES (?, ?, ?)",
+                (user_id, today, count)
+            )
+
+        conn.commit()
+
+
+def use_extra_custom_topic(user_id: int) -> bool:
+    """Списывает 1 разовую тему. Возвращает True, если удалось."""
+    today = datetime.now().date().isoformat()
+
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+
+        c.execute(
+            "SELECT extra_custom_topics FROM user_limits WHERE user_id = ? AND date = ?",
+            (user_id, today)
+        )
+        row = c.fetchone()
+
+        if not row or row[0] <= 0:
+            return False
+
+        c.execute(
+            "UPDATE user_limits SET extra_custom_topics = extra_custom_topics - 1 "
+            "WHERE user_id = ? AND date = ?",
+            (user_id, today)
+        )
+        conn.commit()
+        return True   
