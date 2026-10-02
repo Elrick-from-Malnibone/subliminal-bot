@@ -22,6 +22,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+from aiogram.exceptions import TelegramBadRequest
 from config import (
     BOT_TOKEN, ADMIN_ID,
     PRICE_SUBSCRIPTION, PRICE_CUSTOM_TOPIC, PRICE_REMOVE_SIGNATURE,
@@ -754,12 +756,28 @@ async def handle_custom_track(message: types.Message, state):
         await message.answer("Нужен именно MP3-файл.")
         return
 
-    file_info = await bot.get_file(file.file_id)
+    # Проверка размера — Telegram не даёт боту скачивать >20 МБ
+    if file.file_size and file.file_size > 20 * 1024 * 1024:
+        await message.answer(
+            "❌ Файл больше 20 МБ — Telegram не даёт боту такие скачивать.\n\n"
+            "Сожми трек или возьми файл до 20 МБ."
+        )
+        return
+
+    try:
+        file_info = await bot.get_file(file.file_id)
+    except TelegramBadRequest:
+        await message.answer(
+            "❌ Не удалось скачать файл. Скорее всего, он слишком большой.\n\n"
+            "Попробуй файл до 20 МБ."
+        )
+        return
+
     os.makedirs("assets/user", exist_ok=True)
     user_track_path = f"assets/user/{message.from_user.id}_{int(time.time())}.mp3"
     await bot.download_file(file_info.file_path, user_track_path)
 
-    await state.update_data(custom_track=user_track_path)
+    await state.update_data(custom_track=user_track_path, category="custom")
     await message.answer(
         "✅ Трек принят.\n\n"
         "🕐 Выбери длину саблиминала:",
