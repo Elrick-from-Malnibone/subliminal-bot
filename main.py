@@ -1144,10 +1144,11 @@ async def generate_subliminal_background(data: dict):
                 "name": subliminal_name
             }
 
-            # Спрашиваем про публикацию
+                        # Спрашиваем про публикацию
             await bot.send_message(
                 chat_id,
-                "📢 Хочешь опубликовать свой саблиминал в канале?",
+                "📢 Хочешь опубликовать свой саблиминал в канале?\n\n"
+                "Он появится здесь: https://t.me/SubliminalBot_Channel",
                 reply_markup=publish_keyboard()
             )
 
