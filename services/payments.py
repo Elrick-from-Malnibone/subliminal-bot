@@ -1,9 +1,13 @@
 # services/payments.py
 # Работа с ЮKassa: создание платежей и проверка статуса
 
+import logging
+
 from yookassa import Configuration, Payment
 from config import YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY
 
+
+logger = logging.getLogger(__name__)
 
 Configuration.account_id = YOOKASSA_SHOP_ID
 Configuration.secret_key = YOOKASSA_SECRET_KEY
@@ -11,6 +15,9 @@ Configuration.secret_key = YOOKASSA_SECRET_KEY
 
 def create_payment(amount: float, description: str, user_id: int, payment_type: str) -> dict | None:
     """Создаёт платёж в ЮKassa."""
+    logger.info(f"💰 Создаю платёж: user_id={user_id}, type={payment_type}, amount={amount}")
+    logger.info(f"🔑 SHOP_ID={'есть' if YOOKASSA_SHOP_ID else 'НЕТ'}, SECRET_KEY={'есть' if YOOKASSA_SECRET_KEY else 'НЕТ'}")
+
     try:
         payment = Payment.create({
             "amount": {
@@ -29,13 +36,17 @@ def create_payment(amount: float, description: str, user_id: int, payment_type: 
             }
         })
 
+        logger.info(f"✅ Платёж создан: {payment.id}")
+
         return {
             "payment_id": payment.id,
             "confirmation_url": payment.confirmation.confirmation_url
         }
 
     except Exception as e:
-        print(f"Ошибка создания платежа: {e}")
+        logger.error(f"❌ Ошибка создания платежа: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return None
 
 
@@ -45,5 +56,7 @@ def check_payment(payment_id: str) -> str | None:
         payment = Payment.find_one(payment_id)
         return payment.status
     except Exception as e:
-        print(f"Ошибка проверки платежа: {e}")
+        logger.error(f"❌ Ошибка проверки платежа: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return None

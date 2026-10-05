@@ -263,6 +263,8 @@ async def handle_pay_subscription(call: types.CallbackQuery, state):
     """Создаёт платёж на подписку."""
     user_id = call.from_user.id
 
+    logger.info(f"💰 Создаю платёж для {user_id}")
+
     payment = await asyncio.to_thread(
         create_payment,
         PRICE_SUBSCRIPTION,
