@@ -219,6 +219,20 @@ async def cmd_start(message: types.Message, state):
     )
     await state.set_state(SubliminalStates.waiting_for_topic)
 
+@dp.message(F.text.in_(["/help", "/хэлп", "/помощь"]))
+async def cmd_help(message: types.Message, state):
+    await message.answer(
+        "🤖 <b>Что умеет бот</b>\n\n"
+        "🎧 Генерирует персональные саблиминалы\n"
+        "✨ 10 готовых тем + свой текст + своя тема\n"
+        "🎙 4 голоса, 6 частот, 5 бинауральных ритмов\n"
+        "📢 Публикация в канал\n\n"
+        "<b>Команды:</b>\n"
+        "/start — начать / выбрать тему\n"
+        "/sub — подписка и тарифы\n"
+        "/help — эта справка",
+        parse_mode="HTML"
+    )
 
 @dp.message(F.text == "/stats")
 async def cmd_stats(message: types.Message):
@@ -239,7 +253,7 @@ async def cmd_stats(message: types.Message):
         parse_mode="HTML"
     )
 
-@dp.message(F.text == "/subscribe")
+@dp.message(F.text.in_(["/subscribe", "/sub", "/подписка"]))
 async def cmd_subscribe(message: types.Message, state):
     """Показывает тарифы подписки."""
     await state.clear()
@@ -1436,6 +1450,13 @@ async def cleanup_output():
 async def main():
     init_db()
     asyncio.create_task(cleanup_output())
+
+    # Меню команд в Telegram
+    await bot.set_my_commands([
+        types.BotCommand(command="start", description="Начать"),
+        types.BotCommand(command="sub", description="Подписка и тарифы"),
+        types.BotCommand(command="help", description="Помощь"),
+    ])
 
     webhook_url = os.getenv("WEBHOOK_URL")
 
