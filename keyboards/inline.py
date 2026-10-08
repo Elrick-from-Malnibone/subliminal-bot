@@ -170,6 +170,9 @@ def subscribe_keyboard():
             InlineKeyboardButton(text="💳 Убрать подпись с 1 саба", callback_data="pay_remove_signature"),
         ],
         [
+            InlineKeyboardButton(text="💝 Поддержать проект", callback_data="donate_menu"),
+        ],
+        [
             InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_topic"),
         ],
     ])
@@ -179,5 +182,21 @@ def back_to_subscribe_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="⬅️ Назад", callback_data="subscribe"),
+        ],
+    ])
+
+def donate_keyboard():
+    """Клавиатура доната."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="💝 100 ₽", callback_data="donate_100"),
+            InlineKeyboardButton(text="💝 300 ₽", callback_data="donate_300"),
+        ],
+        [
+            InlineKeyboardButton(text="💝 500 ₽", callback_data="donate_500"),
+            InlineKeyboardButton(text="💝 1000 ₽", callback_data="donate_1000"),
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_topic"),
         ],
     ])

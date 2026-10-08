@@ -60,6 +60,7 @@ from keyboards.inline import (
     limit_keyboard,
     subscribe_keyboard,
     back_to_subscribe_keyboard,
+    donate_keyboard,
 )
 from services.affirmations import get_affirmation
 import services.affirmations
@@ -272,6 +273,18 @@ async def cmd_subscribe(message: types.Message, state):
         reply_markup=subscribe_keyboard()
     )
 
+@dp.message(F.text.in_(["/donate", "/донат", "/поддержать"]))
+async def cmd_donate(message: types.Message, state):
+    """Показывает меню доната."""
+    await message.answer(
+        "💝 <b>Поддержать проект</b>\n\n"
+        "Бот развивается, и любая поддержка помогает делать его лучше: "
+        "новые темы, фичи, улучшения звука.\n\n"
+        "Выбери сумму:",
+        parse_mode="HTML",
+        reply_markup=donate_keyboard()
+    )    
+
 @dp.callback_query(F.data == "pay_subscription")
 async def handle_pay_subscription(call: types.CallbackQuery, state):
     """Создаёт платёж на подписку."""
@@ -381,6 +394,52 @@ async def handle_subscribe(call: types.CallbackQuery, state):
         f"— Убрать подпись с 1 саба — {PRICE_REMOVE_SIGNATURE} руб",
         parse_mode="HTML",
         reply_markup=subscribe_keyboard()
+    )
+    await call.answer()    
+
+@dp.callback_query(F.data == "donate_menu")
+async def handle_donate_menu(call: types.CallbackQuery, state):
+    """Открывает меню доната из кнопки."""
+    await call.message.edit_text(
+        "💝 <b>Поддержать проект</b>\n\n"
+        "Бот развивается, и любая поддержка помогает делать его лучше.\n\n"
+        "Выбери сумму:",
+        parse_mode="HTML",
+        reply_markup=donate_keyboard()
+    )
+    await call.answer()
+
+
+@dp.callback_query(F.data.startswith("donate_") & ~F.data.in_(["donate_menu"]))
+async def handle_donate(call: types.CallbackQuery, state):
+    """Создаёт платёж на донат."""
+    amount = int(call.data.replace("donate_", ""))
+    user_id = call.from_user.id
+
+    logger.info(f"💝 Донат: user_id={user_id}, amount={amount}")
+
+    payment = await asyncio.to_thread(
+        create_payment,
+        amount,
+        f"Поддержка проекта ({amount} ₽)",
+        user_id,
+        "donation"
+    )
+
+    if not payment:
+        await call.message.edit_text(
+            "❌ Не удалось создать платёж. Попробуй позже.",
+            reply_markup=back_to_subscribe_keyboard()
+        )
+        await call.answer()
+        return
+
+    await call.message.edit_text(
+        f"💝 Спасибо за поддержку!\n\n"
+        f"Сумма: {amount} ₽\n\n"
+        f"Перейди по ссылке для оплаты:\n"
+        f"{payment['confirmation_url']}",
+        reply_markup=back_to_subscribe_keyboard()
     )
     await call.answer()    
 
@@ -1375,8 +1434,20 @@ async def handle_yookassa_event(event: dict):
 
         logger.info(f"💰 ОПЛАТА: user_id={user_id}, type={payment_type}")
 
+        # Донат
+        if payment_type == "donation":
+            logger.info(f"💝 Донат получен: user_id={user_id}")
+            await bot.send_message(
+                user_id,
+                "💝 Спасибо за поддержку! Ты делаешь проект лучше."
+            )
+            await bot.send_message(
+                ADMIN_ID,
+                f"💝 Донат: user_id={user_id}"
+            )
+
         # Активируем в зависимости от типа
-        if payment_type == "subscription":
+        elif payment_type == "subscription":
             activate_subscription(user_id, days=30)
             logger.info(f"✅ Подписка активирована для {user_id}")
 
@@ -1411,7 +1482,7 @@ async def handle_yookassa_event(event: dict):
     except Exception as e:
         logger.error(f"❌ Ошибка обработки вебхука: {e}")
         import traceback
-        logger.error(traceback.format_exc())    
+        logger.error(traceback.format_exc())
 
 @dp.callback_query(F.data == "back_to_publish")
 async def back_to_publish(call: types.CallbackQuery, state):
@@ -1455,6 +1526,7 @@ async def main():
     await bot.set_my_commands([
         types.BotCommand(command="start", description="Начать"),
         types.BotCommand(command="sub", description="Подписка и тарифы"),
+        types.BotCommand(command="donate", description="Поддержать проект"),
         types.BotCommand(command="help", description="Помощь"),
     ])
 
