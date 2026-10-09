@@ -506,14 +506,19 @@ async def handle_custom(call: types.CallbackQuery, state):
 @dp.callback_query(F.data == "topic_custom_topic")
 async def handle_custom_topic(call: types.CallbackQuery, state):
     
-    if not can_use_custom_topic(call.from_user.id):
-         await call.message.edit_text(
-             "❌ Лимит на «Свою тему» исчерпан.\n\n"
-             "Можно использовать только 1 раз в день.\n"
-             "Попробуй завтра или выбери готовую тему."
-         )
-         await call.answer()
-         return
+    limits = get_user_limits(call.from_user.id)
+    usage = get_today_usage(call.from_user.id)
+
+    if usage["custom_topic_used"] >= limits["custom_topics"]:
+        await call.message.edit_text(
+            "❌ Лимит на «Свою тему» исчерпан.\n\n"
+            f"Твой лимит: {limits['custom_topics']} в день.\n\n"
+            "💎 Подписка — 10 своих тем в день\n"
+            "💳 Разовая покупка — 1 своя тема",
+            reply_markup=limit_keyboard()
+        )
+        await call.answer()
+        return
 
     await call.message.edit_text(
         "🎯 Напиши свою тему — то, чего нет в готовом списке.\n\n"
@@ -530,10 +535,13 @@ async def handle_custom_topic(call: types.CallbackQuery, state):
 @dp.message(SubliminalStates.waiting_for_custom_topic)
 async def handle_custom_topic_text(message: types.Message, state):
     # Проверяем лимит
-    if not can_use_custom_topic(message.from_user.id):
+    limits = get_user_limits(message.from_user.id)
+    usage = get_today_usage(message.from_user.id)
+
+    if usage["custom_topic_used"] >= limits["custom_topics"]:
         await message.answer(
             "❌ Лимит на «Свою тему» исчерпан.\n\n"
-            "Можно использовать только 1 раз в день.\n\n"
+            f"Твой лимит: {limits['custom_topics']} в день.\n\n"
             "💎 Подписка — 10 своих тем в день\n"
             "💳 Разовая покупка — 1 своя тема",
             reply_markup=limit_keyboard()
