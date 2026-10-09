@@ -520,6 +520,8 @@ async def handle_custom_topic(call: types.CallbackQuery, state):
         await call.answer()
         return
 
+    await state.set_state(SubliminalStates.waiting_for_custom_topic)
+
     await call.message.edit_text(
         "🎯 Напиши свою тему — то, чего нет в готовом списке.\n\n"
         "Например:\n"
@@ -529,7 +531,6 @@ async def handle_custom_topic(call: types.CallbackQuery, state):
         "Нейронка сгенерирует аффирмации под твой запрос."
     )
     await call.answer()
-    await state.set_state(SubliminalStates.waiting_for_custom_topic)
 
 
 @dp.message(SubliminalStates.waiting_for_custom_topic)
