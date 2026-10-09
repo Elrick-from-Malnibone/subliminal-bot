@@ -560,9 +560,7 @@ async def handle_custom_topic_text(message: types.Message, state):
     user_topic = message.text
     await state.update_data(topic=user_topic)
 
-        # Проверяем, использовал ли лимит
-    from utils.db import get_today_usage, get_user_limits, use_extra_custom_topic
-
+    
     usage = get_today_usage(message.from_user.id)
     limits = get_user_limits(message.from_user.id)
 
