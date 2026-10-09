@@ -533,8 +533,10 @@ async def handle_custom_topic_text(message: types.Message, state):
     if not can_use_custom_topic(message.from_user.id):
         await message.answer(
             "❌ Лимит на «Свою тему» исчерпан.\n\n"
-            "Можно использовать только 1 раз в день.\n"
-            "Попробуй завтра или выбери готовую тему."
+            "Можно использовать только 1 раз в день.\n\n"
+            "💎 Подписка — 10 своих тем в день\n"
+            "💳 Разовая покупка — 1 своя тема",
+            reply_markup=limit_keyboard()
         )
         await state.clear()
         return
