@@ -1494,11 +1494,11 @@ async def back_to_publish(call: types.CallbackQuery, state):
 
 
 async def cleanup_output():
-    """Удаляет старые файлы из output/ и audio/ раз в 15 минут."""
+    """Удаляет старые файлы из output/, audio/ и assets/user/ раз в 15 минут."""
     while True:
         await asyncio.sleep(900)
 
-        for folder in ["output", "audio"]:
+        for folder in ["output", "audio", "assets/user"]:
             if not os.path.exists(folder):
                 continue
 
@@ -1508,7 +1508,7 @@ async def cleanup_output():
             for filename in os.listdir(folder):
                 filepath = os.path.join(folder, filename)
                 if os.path.isfile(filepath):
-                    if now - os.path.getmtime(filepath) > 900:
+                    if now - os.path.getmtime(filepath) > 3600:
                         try:
                             os.remove(filepath)
                             removed += 1
@@ -1517,7 +1517,6 @@ async def cleanup_output():
 
             if removed:
                 print(f"🧹 Чистка {folder}: удалено {removed} файлов")
-
 async def main():
     init_db()
     asyncio.create_task(cleanup_output())
