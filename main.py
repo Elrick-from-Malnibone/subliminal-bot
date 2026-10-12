@@ -43,7 +43,7 @@ from utils.db import (
     add_extra_custom_topics, use_extra_custom_topic,
 )
 from services.payments import create_payment, check_payment
-
+from aiogram.fsm.storage.sqlite import SQLiteStorage
 from config import BOT_TOKEN, ADMIN_ID
 from states.fsm import SubliminalStates
 from keyboards.inline import (
@@ -103,7 +103,8 @@ if PROXY:
 else:
     bot = Bot(token=BOT_TOKEN)
 
-dp = Dispatcher()
+storage = SQLiteStorage("/app/data/fsm.db")
+dp = Dispatcher(storage=storage)
 
 TOPICS = {
     "topic_money": {"key": "money", "text": "деньги, богатство, изобилие"},
