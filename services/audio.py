@@ -190,7 +190,7 @@ def create_subliminal(voice_path: str, category: str = "nature", custom_track: s
 
             bg_vol = background.dBFS
             bin_vol = binaural.dBFS
-            target_bin_vol = bg_vol - 32
+            target_bin_vol = bg_vol - 30
 
             if target_bin_vol < -55:
                 target_bin_vol = -55
@@ -212,7 +212,7 @@ def create_subliminal(voice_path: str, category: str = "nature", custom_track: s
 
             bg_vol = background.dBFS
             sol_vol = solfeggio.dBFS
-            target_sol_vol = bg_vol - 50
+            target_sol_vol = bg_vol - 48
 
             if target_sol_vol < -60:
                 target_sol_vol = -60
