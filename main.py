@@ -444,7 +444,7 @@ async def handle_donate(call: types.CallbackQuery, state):
     await call.answer()    
 
 
-@dp.message(SubliminalStates.waiting_for_broadcast)
+@dp.message(SubliminalStates.waiting_for_broadcast, F.text)
 async def handle_broadcast(message: types.Message, state):
     if message.from_user.id != ADMIN_ID:
         return
@@ -478,7 +478,6 @@ async def handle_broadcast(message: types.Message, state):
         f"📤 Отправлено: {sent}\n"
         f"❌ Ошибок: {failed}"
     )
-
 
 @dp.callback_query(F.data.in_(TOPICS.keys()))
 async def handle_topic(call: types.CallbackQuery, state):
