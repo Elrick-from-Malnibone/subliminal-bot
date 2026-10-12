@@ -32,7 +32,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 from aiogram.client.session.aiohttp import AiohttpSession
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from utils.db import (
     init_db, add_user, log_generation, get_stats,
@@ -158,18 +158,6 @@ async def main():
         print("=== POLLING MODE ===", flush=True)
         await dp.start_polling(bot)
 
-@dp.message(F.text == "/rs")
-async def cmd_broadcast(message: types.Message, state):
-    if message.from_user.id != ADMIN_ID:
-        return
-
-    await state.clear()
-
-    await message.answer(
-        "📢 Напиши текст для рассылки.\n\n"
-        "Он уйдёт всем юзерам бота."
-    )
-    await state.set_state(SubliminalStates.waiting_for_broadcast)
 
 
 @dp.message(CommandStart())
@@ -254,6 +242,61 @@ async def cmd_stats(message: types.Message):
         f"🎯 Своя тема: <b>{stats['from_custom_topic']}</b>",
         parse_mode="HTML"
     )
+
+@dp.message(Command("post"))
+async def cmd_post(message: types.Message, state):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    await state.clear()
+    await message.answer(
+        "📢 Перешли мне любой пост из любого чата.\n\n"
+        "Я разошлю его всем юзерам бота."
+    )
+    await state.set_state(SubliminalStates.waiting_for_broadcast)
+
+
+@dp.message(SubliminalStates.waiting_for_broadcast)
+async def handle_broadcast(message: types.Message, state):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    # Сохраняем ID чата и ID сообщения, чтобы скопировать его
+    from_chat_id = message.chat.id
+    message_id = message.message_id
+
+    await state.clear()
+
+    users = get_all_users()
+
+    if not users:
+        await message.answer("Нет юзеров для рассылки.")
+        return
+
+    status = await message.answer(f"⏳ Рассылаю {len(users)} юзерам...")
+
+    sent = 0
+    failed = 0
+
+    for user_id in users:
+        try:
+            await bot.copy_message(
+                chat_id=user_id,
+                from_chat_id=from_chat_id,
+                message_id=message_id
+            )
+            sent += 1
+        except Exception as e:
+            failed += 1
+            print(f"Не отправлено {user_id}: {e}")
+
+        await asyncio.sleep(0.05)
+
+    await status.edit_text(
+        f"✅ Рассылка завершена.\n\n"
+        f"📤 Отправлено: {sent}\n"
+        f"❌ Ошибок: {failed}"
+    )    
 
 @dp.message(F.text.in_(["/subscribe", "/sub", "/подписка"]))
 async def cmd_subscribe(message: types.Message, state):
@@ -445,40 +488,7 @@ async def handle_donate(call: types.CallbackQuery, state):
     await call.answer()    
 
 
-@dp.message(SubliminalStates.waiting_for_broadcast, F.text)
-async def handle_broadcast(message: types.Message, state):
-    if message.from_user.id != ADMIN_ID:
-        return
 
-    broadcast_text = message.text
-    await state.clear()
-
-    users = get_all_users()
-
-    if not users:
-        await message.answer("Нет юзеров для рассылки.")
-        return
-
-    status = await message.answer(f"⏳ Рассылаю {len(users)} юзерам...")
-
-    sent = 0
-    failed = 0
-
-    for user_id in users:
-        try:
-            await bot.send_message(user_id, broadcast_text)
-            sent += 1
-        except Exception as e:
-            failed += 1
-            print(f"Не отправлено {user_id}: {e}")
-
-        await asyncio.sleep(0.05)
-
-    await status.edit_text(
-        f"✅ Рассылка завершена.\n\n"
-        f"📤 Отправлено: {sent}\n"
-        f"❌ Ошибок: {failed}"
-    )
 
 @dp.callback_query(F.data.in_(TOPICS.keys()))
 async def handle_topic(call: types.CallbackQuery, state):
