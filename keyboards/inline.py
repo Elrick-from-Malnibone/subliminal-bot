@@ -37,6 +37,25 @@ def voices_keyboard():
         ],
     ])
 
+def voices_keyboard_has_clone():
+    """Клавиатура выбора голоса, если клон уже есть."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🎙 Мужской обычный", callback_data="voice_male_1"),
+            InlineKeyboardButton(text="🎙 Мужской глубокий", callback_data="voice_male_2"),
+        ],
+        [
+            InlineKeyboardButton(text="🎤 Женский обычный", callback_data="voice_female_1"),
+            InlineKeyboardButton(text="🎤 Женский мягкий", callback_data="voice_female_2"),
+        ],
+        [
+            InlineKeyboardButton(text="✨ Мой голос", callback_data="use_my_voice"),
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_topic"),
+        ],
+    ])
+
 
 def categories_keyboard():
     """Клавиатура выбора категории трека."""

@@ -62,6 +62,7 @@ from keyboards.inline import (
     subscribe_keyboard,
     back_to_subscribe_keyboard,
     donate_keyboard,
+    voices_keyboard_has_clone,
 )
 from services.affirmations import get_affirmation
 import services.affirmations
@@ -706,13 +707,24 @@ async def handle_regen(call: types.CallbackQuery, state):
 
 @dp.callback_query(F.data == "affirm_ok")
 async def handle_ok(call: types.CallbackQuery, state):
-    await call.message.edit_text(
-        "✅ Принято. Теперь выбери голос:",
-        reply_markup=voices_keyboard()
-    )
+    user_id = call.from_user.id
+    voice_id = get_voice_id(user_id)  # проверяем, есть ли клон в БД
+
+    if voice_id:
+        # Клон есть — показываем расширенную клавиатуру (с кнопкой "Мой голос")
+        await call.message.edit_text(
+            "✅ Принято. Теперь выбери голос:",
+            reply_markup=voices_keyboard_has_clone()
+        )
+    else:
+        # Клона нет — обычная клавиатура
+        await call.message.edit_text(
+            "✅ Принято. Теперь выбери голос:",
+            reply_markup=voices_keyboard()
+        )
+    
     await call.answer()
     await state.set_state(SubliminalStates.choosing_voice)
-
 
 @dp.callback_query(SubliminalStates.choosing_voice, F.data.startswith("voice_"))
 async def handle_voice(call: types.CallbackQuery, state):
@@ -725,6 +737,25 @@ async def handle_voice(call: types.CallbackQuery, state):
     )
     await call.answer()
     await state.set_state(SubliminalStates.choosing_track)
+
+@dp.callback_query(F.data == "use_my_voice")
+async def handle_use_my_voice(call: types.CallbackQuery, state):
+    user_id = call.from_user.id
+    voice_id = get_voice_id(user_id)
+
+    if not voice_id:
+        await call.message.edit_text("❌ У тебя ещё нет клона. Запиши голос сначала.")
+        await call.answer()
+        return
+
+    await state.update_data(voice_type="clone", reference_id=voice_id)
+
+    await call.message.edit_text(
+        "✅ Использую твой голос. Выбери категорию трека:",
+        reply_markup=categories_keyboard()
+    )
+    await call.answer()
+    await state.set_state(SubliminalStates.choosing_track)    
 
 @dp.callback_query(F.data == "clone_voice")
 async def handle_clone_voice(call: types.CallbackQuery, state):
@@ -807,7 +838,13 @@ async def handle_voice_sample(message: types.Message, state):
         "Теперь при генерации саблиминала можешь выбрать свой голос.",
         parse_mode="HTML"
     )
-    await state.clear() 
+    # Показываем клавиатуру с клоном
+    await message.answer(
+        "Выбери голос:",
+        reply_markup=voices_keyboard_has_clone()
+    )
+    
+    await state.set_state(SubliminalStates.choosing_voice)
 
 
 @dp.callback_query(SubliminalStates.choosing_track, F.data.startswith("cat_"))
