@@ -68,15 +68,26 @@ def clone_voice(audio_path: str) -> str | None:
                 "visibility": "private",
             }
 
+            print(f"🚀 Отправляю запрос на {url}")
+            print(f"📦 Файл: {audio_path}, размер: {os.path.getsize(audio_path)}")
+
             response = requests.post(url, headers=headers, files=files, data=data, timeout=120)
 
+        print(f"📥 Ответ от Fish Audio: {response.status_code}")
+        print(f"📄 Тело ответа: {response.text[:500]}")
+
         if response.status_code not in (200, 201):
-            print(f"Ошибка клонирования: {response.status_code} — {response.text}")
+            print(f"❌ Ошибка клонирования: {response.status_code} — {response.text}")
             return None
 
         result = response.json()
+        print(f"✅ JSON: {result}")
+        
+        # Возвращаем ID
         return result.get("id")
 
     except Exception as e:
-        print(f"Ошибка клонирования: {e}")
-        return None    
+        print(f"❌ Ошибка клонирования: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return None
