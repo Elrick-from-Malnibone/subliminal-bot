@@ -63,14 +63,14 @@ def clone_voice(audio_path: str) -> str | None:
                 "voices": (os.path.basename(audio_path), f, "audio/wav"),
             }
             data = {
+                "type": "tts",
                 "title": "My Voice",
-                "description": "Cloned from user sample",
+                "train_mode": "fast",
                 "visibility": "private",
+                "description": "Cloned from user sample",
             }
 
             print(f"🚀 Отправляю запрос на {url}")
-            print(f"📦 Файл: {audio_path}, размер: {os.path.getsize(audio_path)}")
-
             response = requests.post(url, headers=headers, files=files, data=data, timeout=120)
 
         print(f"📥 Ответ от Fish Audio: {response.status_code}")
@@ -81,10 +81,10 @@ def clone_voice(audio_path: str) -> str | None:
             return None
 
         result = response.json()
-        print(f"✅ JSON: {result}")
-        
-        # Возвращаем ID
-        return result.get("id")
+        # Fish Audio возвращает _id (с подчёркиванием) для модели
+        voice_id = result.get("_id") or result.get("id")
+        print(f"✅ Voice ID: {voice_id}")
+        return voice_id
 
     except Exception as e:
         print(f"❌ Ошибка клонирования: {e}")
