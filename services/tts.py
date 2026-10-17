@@ -57,21 +57,23 @@ def clone_voice(audio_path: str) -> str | None:
         "Authorization": f"Bearer {FISH_API_KEY}",
     }
 
+    # Параметры — в URL, не в теле!
+    params = {
+        "type": "tts",
+        "train_mode": "fast",
+        "title": "My Voice",
+        "visibility": "private",
+        "description": "Cloned from user sample",
+    }
+
     try:
         with open(audio_path, "rb") as f:
             files = {
                 "voices": (os.path.basename(audio_path), f, "audio/wav"),
             }
-            data = {
-                "type": "tts",
-                "title": "My Voice",
-                "train_mode": "fast",
-                "visibility": "private",
-                "description": "Cloned from user sample",
-            }
 
-            print(f"🚀 Отправляю запрос на {url}")
-            response = requests.post(url, headers=headers, files=files, data=data, timeout=120)
+            print(f"🚀 Отправляю запрос на {url} с параметрами {params}")
+            response = requests.post(url, headers=headers, params=params, files=files, timeout=120)
 
         print(f"📥 Ответ от Fish Audio: {response.status_code}")
         print(f"📄 Тело ответа: {response.text[:500]}")
@@ -81,7 +83,6 @@ def clone_voice(audio_path: str) -> str | None:
             return None
 
         result = response.json()
-        # Fish Audio возвращает _id (с подчёркиванием) для модели
         voice_id = result.get("_id") or result.get("id")
         print(f"✅ Voice ID: {voice_id}")
         return voice_id
