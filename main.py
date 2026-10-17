@@ -749,28 +749,47 @@ async def handle_voice_sample(message: types.Message, state):
     user_id = message.from_user.id
     status = await message.answer("⏳ Обрабатываю запись...")
 
-    # 1. Скачиваем голосовое
-    file = message.voice
-    file_info = await bot.get_file(file.file_id)
-    os.makedirs("/app/data/samples", exist_ok=True)
-    ogg_path = f"/app/data/samples/{user_id}_{int(time.time())}.ogg"
-    await bot.download_file(file_info.file_path, ogg_path)
-
-    # 2. Конвертим в wav
-    from pydub import AudioSegment
     try:
+        file = message.voice
+        logger.info(f"🎙 Получено голосовое от {user_id}, размер: {file.file_size}")
+        
+        file_info = await bot.get_file(file.file_id)
+        logger.info(f"📥 File info получен: {file_info.file_path}")
+        
+        os.makedirs("/app/data/samples", exist_ok=True)
+        ogg_path = f"/app/data/samples/{user_id}_{int(time.time())}.ogg"
+        await bot.download_file(file_info.file_path, ogg_path)
+        logger.info(f"💾 Голосовое скачано: {ogg_path}, размер на диске: {os.path.getsize(ogg_path)}")
+
+        from pydub import AudioSegment
+        logger.info("🎛 Конвертирую в wav...")
+        
         audio = AudioSegment.from_file(ogg_path)
         wav_path = ogg_path.replace(".ogg", ".wav")
         audio.export(wav_path, format="wav")
+        logger.info(f"✅ Конвертировано в wav: {wav_path}, размер: {os.path.getsize(wav_path)}")
+
     except Exception as e:
-        await status.edit_text("❌ Не удалось обработать аудио. Попробуй ещё раз.")
+        logger.error(f"❌ Ошибка на этапе скачивания/конвертации: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        await status.edit_text(f"❌ Ошибка обработки: {e}")
         return
 
-    # 3. Отправляем в Fish Audio
-    await status.edit_text("⏳ Создаю клон голоса...")
-    voice_id = await asyncio.to_thread(clone_voice, wav_path)
+    try:
+        await status.edit_text("⏳ Создаю клон голоса...")
+        logger.info(f"🚀 Отправляю на клонирование: {wav_path}")
+        
+        voice_id = await asyncio.to_thread(clone_voice, wav_path)
+        logger.info(f"📦 Результат клонирования: {voice_id}")
 
-    # 4. Чистим файлы
+    except Exception as e:
+        logger.error(f"❌ Ошибка клонирования: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        voice_id = None
+
+    # Чистим файлы
     if os.path.exists(ogg_path):
         os.remove(ogg_path)
     if os.path.exists(wav_path):
@@ -781,7 +800,6 @@ async def handle_voice_sample(message: types.Message, state):
         await state.clear()
         return
 
-    # 5. Сохраняем в БД
     save_voice_id(user_id, voice_id)
 
     await status.edit_text(
@@ -789,7 +807,7 @@ async def handle_voice_sample(message: types.Message, state):
         "Теперь при генерации саблиминала можешь выбрать свой голос.",
         parse_mode="HTML"
     )
-    await state.clear()    
+    await state.clear() 
 
 
 @dp.callback_query(SubliminalStates.choosing_track, F.data.startswith("cat_"))
