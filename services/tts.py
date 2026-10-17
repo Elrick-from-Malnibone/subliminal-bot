@@ -52,7 +52,7 @@ def clone_voice(audio_path: str) -> str | None:
     """Создаёт клон голоса через Fish Audio. Возвращает reference_id."""
     import requests
 
-    url = "https://api.fish.audio/v1/model"
+    url = "https://api.fish.audio/model"
     headers = {
         "Authorization": f"Bearer {FISH_API_KEY}",
     }
