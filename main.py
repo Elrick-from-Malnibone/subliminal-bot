@@ -164,6 +164,9 @@ async def main():
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state):
+    # СРАЗУ очищаем состояние — до любых проверок файлов
+    await state.clear()
+
     data = await state.get_data()
 
     # Чистим старый саблиминал
@@ -190,8 +193,6 @@ async def cmd_start(message: types.Message, state):
             os.remove(cached_voice)
         except Exception as e:
             print(f"Ошибка удаления кэша: {e}")
-
-    await state.clear()
 
     is_new = add_user(message.from_user.id, message.from_user.username or "")
 
