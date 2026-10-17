@@ -1517,7 +1517,7 @@ async def cleanup_output():
     while True:
         await asyncio.sleep(900)
 
-        for folder in ["output", "audio", "assets/user"]:
+        for folder in ["/app/data/output", "/app/data/audio", "assets/user"]:
             if not os.path.exists(folder):
                 continue
 

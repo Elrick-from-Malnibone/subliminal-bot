@@ -41,7 +41,7 @@ from pydub import AudioSegment
 ASSETS_DIR = "assets"
 
 # Папка для готовых саблиминалов
-OUTPUT_DIR = "output"
+OUTPUT_DIR = "/app/data/output"
 
 
 def generate_binaural(duration_ms: int, freq_left: float = 200.0, freq_right: float = 210.0) -> AudioSegment:

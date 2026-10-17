@@ -4,7 +4,7 @@ import time
 import requests
 from config import FISH_API_KEY
 
-AUDIO_DIR = "audio"
+AUDIO_DIR = "/app/data/audio"
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
 VOICES = {
