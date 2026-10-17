@@ -3,10 +3,9 @@ aiohttp
 aiohttp-socks
 requests
 python-dotenv
-edge-tts
 pydub
 numpy
 yookassa
 aiosqlite
 aiogram-sqlite-storage
-fishaudio
+fish-audio-sdk
