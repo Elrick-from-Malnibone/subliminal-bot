@@ -9,3 +9,4 @@ numpy
 yookassa
 aiosqlite
 aiogram-sqlite-storage
+fishaudio

@@ -1,59 +1,36 @@
 # services/tts.py
-# Модуль озвучки текста через edge-tts + эффект робота через pedalboard
-
 import os
 import time
+from fishaudio import FishAudio
+from config import FISH_API_KEY
 
-# ← FFMPEG В PATH (нужен для pydub)
-ffmpeg_dir = r"C:\Users\sysin\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0.1-full_build\bin"
-os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ["PATH"]
-
-import edge_tts
-from pydub import AudioSegment
-
-
-# Папка для сохранения аудио
 AUDIO_DIR = "audio"
+client = FishAudio(api_key=FISH_API_KEY)
 
-
-# Доступные голоса с параметрами
-# rate — скорость, pitch — тон
+# Маппинг твоих кнопок на ID голосов Fish Audio
 VOICES = {
-    "male_1":   {"voice": "ru-RU-DmitryNeural",   "rate": "+0%",  "pitch": "+0Hz"},
-    "male_2":   {"voice": "ru-RU-DmitryNeural",   "rate": "-15%", "pitch": "-20Hz"},
-    "female_1": {"voice": "ru-RU-SvetlanaNeural", "rate": "+0%",  "pitch": "+0Hz"},
-    "female_2": {"voice": "ru-RU-SvetlanaNeural", "rate": "-10%", "pitch": "-10Hz"},
+    "male_1":   "0a690dbeb3984a9f88cd39353880775f",  # Меллстрой (мужской)
+    "male_2":   "0a690dbeb3984a9f88cd39353880775f",  # Пока тот же
+    "female_1": "2a1036d645634680b3cc69aeeb60375b",  # Спокойный женский
+    "female_2": "2a1036d645634680b3cc69aeeb60375b",  # Пока тот же
 }
 
-
-
-async def generate_voice(text: str, voice_type: str = "male_1") -> str | None:
-    """
-    Озвучивает текст через edge-tts и сохраняет в MP3.
-
-    :param text: str — текст для озвучки
-    :param voice_type: str — ключ из VOICES
-    :return: str — путь к MP3-файлу, или None при ошибке
-    """
-
-    # Создаём папку для аудио, если её нет
+async def generate_voice(text: str, voice_type: str = "male_1", reference_id: str = None) -> str | None:
+    """Озвучивает текст. Если reference_id — клоном, иначе — выбранным голосом."""
     os.makedirs(AUDIO_DIR, exist_ok=True)
-
-    # Берём параметры голоса
-    voice_params = VOICES.get(voice_type, VOICES["male_1"])
-
-    # Уникальное имя файла
     filename = f"{AUDIO_DIR}/voice_{int(time.time() * 1000)}.mp3"
 
     try:
-        # Создаём Communicate с параметрами rate и pitch
-        communicate = edge_tts.Communicate(
-            text,
-            voice_params["voice"],
-            rate=voice_params["rate"],
-            pitch=voice_params["pitch"],
-        )
-        await communicate.save(filename)
+        if reference_id:
+            # Клон юзера
+            audio = client.tts.convert(text=text, reference_id=reference_id)
+        else:
+            # Обычный голос из списка
+            voice_id = VOICES.get(voice_type, VOICES["male_1"])
+            audio = client.tts.convert(text=text, reference_id=voice_id)
+
+        with open(filename, "wb") as f:
+            f.write(audio)
 
         return filename
 

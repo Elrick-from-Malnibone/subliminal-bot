@@ -34,10 +34,6 @@ BINAURAL_MAP = {
     "magnetism": (200, 210),
 }
 
-# ← ДОБАВЛЯЕМ FFMPEG В PATH ПЕРЕД ИМПОРТОМ PYDUB
-ffmpeg_dir = r"C:\Users\sysin\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0.1-full_build\bin"
-os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ["PATH"]
-
 from pydub import AudioSegment
 
 

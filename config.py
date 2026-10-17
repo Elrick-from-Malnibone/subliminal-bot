@@ -43,3 +43,9 @@ PRICE_REMOVE_SIGNATURE = 30   # убрать подпись с 1 саба
 # ЮKassa
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
+
+#audifush
+FISH_API_KEY = os.getenv("FISH_API_KEY")
+
+
+
