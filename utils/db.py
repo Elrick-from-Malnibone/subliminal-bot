@@ -60,6 +60,13 @@ def init_db():
             )
         """)
 
+                # Миграция: добавляем voice_id в users
+        c.execute("PRAGMA table_info(users)")
+        columns = [row[1] for row in c.fetchall()]
+        if "voice_id" not in columns:
+            c.execute("ALTER TABLE users ADD COLUMN voice_id TEXT DEFAULT NULL")
+            print("🔧 Миграция: добавлена колонка voice_id")
+
         conn.commit()
 
 
@@ -521,3 +528,19 @@ def use_extra_custom_topic(user_id: int) -> bool:
         )
         conn.commit()
         return True   
+
+def save_voice_id(user_id: int, voice_id: str):
+    """Сохраняет reference_id клона голоса юзера."""
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("UPDATE users SET voice_id = ? WHERE user_id = ?", (voice_id, user_id))
+        conn.commit()
+
+
+def get_voice_id(user_id: int) -> str | None:
+    """Возвращает reference_id клона голоса юзера (или None)."""
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("SELECT voice_id FROM users WHERE user_id = ?", (user_id,))
+        row = c.fetchone()
+        return row[0] if row else None

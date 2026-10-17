@@ -29,7 +29,9 @@ def voices_keyboard():
             InlineKeyboardButton(text="🎤 Женский обычный", callback_data="voice_female_1"),
             InlineKeyboardButton(text="🎤 Женский мягкий", callback_data="voice_female_2"),
         ],
-        
+        [
+            InlineKeyboardButton(text="✨ Мой голос (клонировать)", callback_data="clone_voice"),
+        ],
         [
             InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_topic"),
         ],

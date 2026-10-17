@@ -41,6 +41,7 @@ from utils.db import (
     check_limits, add_usage,
     activate_subscription, remove_signature_for_user, has_no_signature,
     add_extra_custom_topics, use_extra_custom_topic,
+    save_voice_id, get_voice_id, 
 )
 from services.payments import create_payment, check_payment
 from aiogram_sqlite_storage.sqlitestore import SQLStorage
@@ -64,7 +65,7 @@ from keyboards.inline import (
 )
 from services.affirmations import get_affirmation
 import services.affirmations
-from services.tts import generate_voice
+from services.tts import generate_voice, clone_voice
 from services.deepseek import generate_affirmation
 from services.audio import create_subliminal
 
@@ -716,7 +717,7 @@ async def handle_ok(call: types.CallbackQuery, state):
 @dp.callback_query(SubliminalStates.choosing_voice, F.data.startswith("voice_"))
 async def handle_voice(call: types.CallbackQuery, state):
     voice_type = call.data.replace("voice_", "")
-    await state.update_data(voice_type=voice_type)
+    await state.update_data(voice_type=voice_type, reference_id=None)
 
     await call.message.edit_text(
         "✅ Голос выбран. Теперь выбери категорию трека:",
@@ -724,6 +725,71 @@ async def handle_voice(call: types.CallbackQuery, state):
     )
     await call.answer()
     await state.set_state(SubliminalStates.choosing_track)
+
+@dp.callback_query(F.data == "clone_voice")
+async def handle_clone_voice(call: types.CallbackQuery, state):
+    await call.message.edit_text(
+        "🎙 <b>Запись голоса для клона</b>\n\n"
+        "Запиши голосовое сообщение (около 1 минуты), читая этот текст:\n\n"
+        "<i>Привет. Меня зовут [имя]. Я записываю свой голос для создания персонального саблиминала. Я говорю спокойно и чётко.\n\n"
+        "Сегодня хороший день. Я читаю этот текст, чтобы мой голос был узнаваемым. Один, два, три, четыре, пять, шесть, семь, восемь, девять, десять.\n\n"
+        "Я люблю утро, когда солнце только встаёт. Я люблю вечер, когда становится тихо. Я люблю дождь, который стучит по крыше. Я люблю ветер, который шумит в листьях.\n\n"
+        "Моя речь ровная и естественная. Я не тороплюсь. Я дышу спокойно. Я чувствую себя комфортно.\n\n"
+        "Этот голос — мой. Он звучит так, как я говорю каждый день. Я читаю этот текст, чтобы мой голос был узнаваемым.\n\n"
+        "Спасибо. Это был мой голос.</i>\n\n"
+        "⚠️ Читай чётко, с выражением, не торопись.",
+        parse_mode="HTML"
+    )
+    await call.answer()
+    await state.set_state(SubliminalStates.waiting_for_voice_sample)
+
+
+@dp.message(SubliminalStates.waiting_for_voice_sample, F.voice)
+async def handle_voice_sample(message: types.Message, state):
+    user_id = message.from_user.id
+    status = await message.answer("⏳ Обрабатываю запись...")
+
+    # 1. Скачиваем голосовое
+    file = message.voice
+    file_info = await bot.get_file(file.file_id)
+    os.makedirs("/app/data/samples", exist_ok=True)
+    ogg_path = f"/app/data/samples/{user_id}_{int(time.time())}.ogg"
+    await bot.download_file(file_info.file_path, ogg_path)
+
+    # 2. Конвертим в wav
+    from pydub import AudioSegment
+    try:
+        audio = AudioSegment.from_file(ogg_path)
+        wav_path = ogg_path.replace(".ogg", ".wav")
+        audio.export(wav_path, format="wav")
+    except Exception as e:
+        await status.edit_text("❌ Не удалось обработать аудио. Попробуй ещё раз.")
+        return
+
+    # 3. Отправляем в Fish Audio
+    await status.edit_text("⏳ Создаю клон голоса...")
+    voice_id = await asyncio.to_thread(clone_voice, wav_path)
+
+    # 4. Чистим файлы
+    if os.path.exists(ogg_path):
+        os.remove(ogg_path)
+    if os.path.exists(wav_path):
+        os.remove(wav_path)
+
+    if not voice_id:
+        await status.edit_text("❌ Не удалось создать клон. Попробуй позже.")
+        await state.clear()
+        return
+
+    # 5. Сохраняем в БД
+    save_voice_id(user_id, voice_id)
+
+    await status.edit_text(
+        "✅ <b>Клон готов!</b>\n\n"
+        "Теперь при генерации саблиминала можешь выбрать свой голос.",
+        parse_mode="HTML"
+    )
+    await state.clear()    
 
 
 @dp.callback_query(SubliminalStates.choosing_track, F.data.startswith("cat_"))
@@ -972,7 +1038,8 @@ async def handle_name(message: types.Message, state):
 
     # Генерим голос ОДИН РАЗ
     await message.answer("⏳ Готовлю голос...")
-    voice_path = await generate_voice(affirmation, voice_type=voice_type)
+    reference_id = data.get("reference_id")
+    voice_path = await generate_voice(affirmation, voice_type=voice_type, reference_id=reference_id)
 
 
     if not voice_path:

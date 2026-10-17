@@ -47,3 +47,36 @@ async def generate_voice(text: str, voice_type: str = "male_1", reference_id: st
     except Exception as e:
         print(f"Ошибка TTS: {e}")
         return None
+
+def clone_voice(audio_path: str) -> str | None:
+    """Создаёт клон голоса через Fish Audio. Возвращает reference_id."""
+    import requests
+
+    url = "https://api.fish.audio/v1/model"
+    headers = {
+        "Authorization": f"Bearer {FISH_API_KEY}",
+    }
+
+    try:
+        with open(audio_path, "rb") as f:
+            files = {
+                "voices": (os.path.basename(audio_path), f, "audio/wav"),
+            }
+            data = {
+                "title": "My Voice",
+                "description": "Cloned from user sample",
+                "visibility": "private",
+            }
+
+            response = requests.post(url, headers=headers, files=files, data=data, timeout=120)
+
+        if response.status_code not in (200, 201):
+            print(f"Ошибка клонирования: {response.status_code} — {response.text}")
+            return None
+
+        result = response.json()
+        return result.get("id")
+
+    except Exception as e:
+        print(f"Ошибка клонирования: {e}")
+        return None    
