@@ -667,7 +667,7 @@ async def handle_custom_text(message: types.Message, state):
 
 
 async def ask_affirmation(message: types.Message, state):
-    data = await state.get_data()
+    data = await state.get_data() or {}
     topic = data.get("topic", "успех")
     topic_key = data.get("topic_key")
 
@@ -834,7 +834,8 @@ async def handle_voice_sample(message: types.Message, state):
         await state.clear()
         return
 
-        save_voice_id(user_id, voice_id)
+    # ВОТ ЗДЕСЬ БЫЛ СБИТ ОТСТУП
+    save_voice_id(user_id, voice_id)
 
     await status.edit_text(
         "✅ <b>Клон готов!</b>\n\n"
@@ -854,13 +855,11 @@ async def handle_voice_sample(message: types.Message, state):
             title="Тест клонированного голоса",
             caption="🎧 Послушай, как звучит твой клон."
         )
-        # Удаляем тестовый файл после отправки
         if os.path.exists(test_audio_path):
             os.remove(test_audio_path)
     else:
         await message.answer("⚠️ Не удалось сгенерировать тестовую озвучку, но клон сохранён.")
 
-    # Показываем клавиатуру с клоном
     await message.answer(
         "Выбери голос:",
         reply_markup=voices_keyboard_has_clone()
