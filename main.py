@@ -164,12 +164,13 @@ async def main():
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state):
-    # СРАЗУ очищаем состояние — до любых проверок файлов
+    # 1. Получаем данные
+    data = await state.get_data()
+    
+    # 2. Сразу очищаем состояние
     await state.clear()
 
-    data = await state.get_data()
-
-    # Чистим старый саблиминал
+    # 3. Чистим старый саблиминал
     old_path = data.get("subliminal_path")
     if old_path and os.path.exists(old_path):
         try:
@@ -178,7 +179,7 @@ async def cmd_start(message: types.Message, state):
         except Exception as e:
             print(f"Ошибка удаления: {e}")
 
-    # Чистим превью
+    # 4. Чистим превью
     preview_path = data.get("preview_path")
     if preview_path and os.path.exists(preview_path):
         try:
@@ -186,7 +187,7 @@ async def cmd_start(message: types.Message, state):
         except Exception as e:
             print(f"Ошибка удаления превью: {e}")
 
-    # Чистим кэш голоса
+    # 5. Чистим кэш голоса
     cached_voice = data.get("cached_voice_path")
     if cached_voice and os.path.exists(cached_voice):
         try:
@@ -194,6 +195,7 @@ async def cmd_start(message: types.Message, state):
         except Exception as e:
             print(f"Ошибка удаления кэша: {e}")
 
+    # 6. Регистрация юзера
     is_new = add_user(message.from_user.id, message.from_user.username or "")
 
     if is_new:
