@@ -8,4 +8,4 @@ numpy
 yookassa
 aiosqlite
 aiogram-sqlite-storage
-fish-audio-sdk
+fish-audio-sdk==1.3.0
