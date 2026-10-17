@@ -831,13 +831,32 @@ async def handle_voice_sample(message: types.Message, state):
         await state.clear()
         return
 
-    save_voice_id(user_id, voice_id)
+        save_voice_id(user_id, voice_id)
 
     await status.edit_text(
         "✅ <b>Клон готов!</b>\n\n"
-        "Теперь при генерации саблиминала можешь выбрать свой голос.",
+        "Сейчас пришлю тестовую озвучку твоим голосом.",
         parse_mode="HTML"
     )
+
+    # Тестовая фраза для демонстрации
+    test_text = "Привет! Это мой клонированный голос. Теперь я могу озвучивать саблиминалы так."
+    
+    test_audio_path = await generate_voice(test_text, reference_id=voice_id)
+    
+    if test_audio_path and os.path.exists(test_audio_path):
+        audio_file = FSInputFile(test_audio_path)
+        await message.answer_audio(
+            audio=audio_file,
+            title="Тест клонированного голоса",
+            caption="🎧 Послушай, как звучит твой клон."
+        )
+        # Удаляем тестовый файл после отправки
+        if os.path.exists(test_audio_path):
+            os.remove(test_audio_path)
+    else:
+        await message.answer("⚠️ Не удалось сгенерировать тестовую озвучку, но клон сохранён.")
+
     # Показываем клавиатуру с клоном
     await message.answer(
         "Выбери голос:",
