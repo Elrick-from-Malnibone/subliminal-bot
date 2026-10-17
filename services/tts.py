@@ -2,6 +2,8 @@
 import os
 import time
 import requests
+import logging
+logger = logging.getLogger(__name__)
 from config import FISH_API_KEY
 
 AUDIO_DIR = "/app/data/audio"
@@ -88,7 +90,7 @@ def clone_voice(audio_path: str) -> str | None:
         return voice_id
 
     except Exception as e:
-        print(f"❌ Ошибка клонирования: {e}")
+        logger.error(f"❌ Ошибка клонирования: {e}")
         import traceback
-        print(traceback.format_exc())
+        logger.error(traceback.format_exc())
         return None
