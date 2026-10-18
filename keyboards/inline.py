@@ -30,7 +30,7 @@ def voices_keyboard():
             InlineKeyboardButton(text="🎤 Женский мягкий", callback_data="voice_female_2"),
         ],
         [
-            InlineKeyboardButton(text="✨ Мой голос (клонировать)", callback_data="clone_voice"),
+            InlineKeyboardButton(text="✨ Мой голос (1 ₽)", callback_data="clone_voice"),
         ],
         [
             InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_topic"),
@@ -49,7 +49,7 @@ def voices_keyboard_has_clone():
             InlineKeyboardButton(text="🎤 Женский мягкий", callback_data="voice_female_2"),
         ],
         [
-            InlineKeyboardButton(text="✨ Мой голос", callback_data="use_my_voice"),
+            InlineKeyboardButton(text="✨ Мой голос (1 ₽)", callback_data="use_my_voice"),
         ],
         [
             InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_topic"),
@@ -168,27 +168,24 @@ def voice_tune_keyboard():
     ])
 
 def limit_keyboard():
-    """Клавиатура при исчерпании лимита."""
+    """Клавиатура при необходимости оплаты."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="💎 Подписка", callback_data="subscribe"),
+            InlineKeyboardButton(text="💳 Оплатить 1 ₽", callback_data="pay_sub"),
         ],
         [
-            InlineKeyboardButton(text="💳 Разовая покупка", callback_data="one_time"),
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_topic"),
         ],
     ])
 
 def subscribe_keyboard():
-    """Клавиатура подписки."""
+    """Клавиатура разовых покупок (тест)."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="💳 Оплатить подписку", callback_data="pay_subscription"),
+            InlineKeyboardButton(text="💳 Оплатить саб (1 ₽)", callback_data="pay_sub"),
         ],
         [
-            InlineKeyboardButton(text="💳 Купить 1 свою тему", callback_data="pay_custom_topic"),
-        ],
-        [
-            InlineKeyboardButton(text="💳 Убрать подпись с 1 саба", callback_data="pay_remove_signature"),
+            InlineKeyboardButton(text="💳 Снять подпись (1 ₽)", callback_data="pay_remove_signature"),
         ],
         [
             InlineKeyboardButton(text="💝 Поддержать проект", callback_data="donate_menu"),
@@ -198,13 +195,7 @@ def subscribe_keyboard():
         ],
     ])
 
-def back_to_subscribe_keyboard():
-    """Кнопка назад к подписке."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="⬅️ Назад", callback_data="subscribe"),
-        ],
-    ])
+# back_to_subscribe_keyboard() — УДАЛЕНА, так как подписки больше нет
 
 def donate_keyboard():
     """Клавиатура доната."""

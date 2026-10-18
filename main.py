@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 from aiogram.exceptions import TelegramBadRequest
 from config import (
     BOT_TOKEN, ADMIN_ID,
-    PRICE_SUBSCRIPTION, PRICE_CUSTOM_TOPIC, PRICE_REMOVE_SIGNATURE,
+    PRICE_SUBLIMINAL, PRICE_FIRST_CLONE, PRICE_CLONE, PRICE_REMOVE_SIGNATURE,
 )
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
@@ -60,7 +60,6 @@ from keyboards.inline import (
     voice_tune_keyboard,
     limit_keyboard,
     subscribe_keyboard,
-    back_to_subscribe_keyboard,
     donate_keyboard,
     voices_keyboard_has_clone,
 )
@@ -303,24 +302,6 @@ async def handle_broadcast(message: types.Message, state):
         f"❌ Ошибок: {failed}"
     )    
 
-@dp.message(F.text.in_(["/subscribe", "/sub", "/подписка"]))
-async def cmd_subscribe(message: types.Message, state):
-    """Показывает тарифы подписки."""
-    await state.clear()
-
-    await message.answer(
-        f"💎 <b>Подписка — {PRICE_SUBSCRIPTION} руб/мес</b>\n\n"
-        f"Что входит:\n"
-        f"— 10 своих тем в день\n"
-        f"— 180 минут саблиминалов в день\n"
-        f"— Без подписи бота\n"
-        f"— Приоритетная генерация\n\n"
-        f"<b>Разовые покупки:</b>\n"
-        f"— 1 своя тема — {PRICE_CUSTOM_TOPIC} руб\n"
-        f"— Убрать подпись с 1 саба — {PRICE_REMOVE_SIGNATURE} руб",
-        parse_mode="HTML",
-        reply_markup=subscribe_keyboard()
-    )
 
 @dp.message(F.text.in_(["/donate", "/донат", "/поддержать"]))
 async def cmd_donate(message: types.Message, state):
@@ -334,79 +315,46 @@ async def cmd_donate(message: types.Message, state):
         reply_markup=donate_keyboard()
     )    
 
-@dp.callback_query(F.data == "pay_subscription")
-async def handle_pay_subscription(call: types.CallbackQuery, state):
-    """Создаёт платёж на подписку."""
+@dp.callback_query(F.data == "pay_sub")
+async def handle_pay_sub(call: types.CallbackQuery, state):
+    """Создаёт платёж на разовый саб."""
     user_id = call.from_user.id
-
-    logger.info(f"💰 Создаю платёж для {user_id}")
 
     payment = await asyncio.to_thread(
         create_payment,
-        PRICE_SUBSCRIPTION,
-        "Подписка на саблиминал-бот (30 дней)",
+        PRICE_SUBLIMINAL,
+        "Оплата саблиминала",
         user_id,
-        "subscription"
+        "subliminal"
     )
 
     if not payment:
         await call.message.edit_text(
             "❌ Не удалось создать платёж. Попробуй позже.",
-            reply_markup=back_to_subscribe_keyboard()
+            reply_markup=subscribe_keyboard()
         )
         await call.answer()
         return
 
     await call.message.edit_text(
-        f"💎 Подписка — {PRICE_SUBSCRIPTION} руб/мес\n\n"
+        f"💳 Оплата саблиминала — {PRICE_SUBLIMINAL} ₽\n\n"
         f"Перейди по ссылке для оплаты:\n"
         f"{payment['confirmation_url']}\n\n"
-        f"После оплаты подписка активируется автоматически.",
-        reply_markup=back_to_subscribe_keyboard()
-    )
-    await call.answer()
-
-
-@dp.callback_query(F.data == "pay_custom_topic")
-async def handle_pay_custom_topic(call: types.CallbackQuery, state):
-    """Создаёт платёж на разовую свою тему."""
-    user_id = call.from_user.id
-
-    payment = await asyncio.to_thread(
-        create_payment,
-        PRICE_CUSTOM_TOPIC,
-        "Разовая своя тема (1 шт)",
-        user_id,
-        "custom_topic"
-    )
-
-    if not payment:
-        await call.message.edit_text(
-            "❌ Не удалось создать платёж. Попробуй позже.",
-            reply_markup=back_to_subscribe_keyboard()
-        )
-        await call.answer()
-        return
-
-    await call.message.edit_text(
-        f"💳 1 своя тема — {PRICE_CUSTOM_TOPIC} руб\n\n"
-        f"Перейди по ссылке для оплаты:\n"
-        f"{payment['confirmation_url']}\n\n"
-        f"После оплаты доступ активируется автоматически.",
-        reply_markup=back_to_subscribe_keyboard()
+        f"После оплаты бот пришлёт доступ.",
+        reply_markup=subscribe_keyboard()
     )
     await call.answer()
 
 
 @dp.callback_query(F.data == "pay_remove_signature")
 async def handle_pay_remove_signature(call: types.CallbackQuery, state):
-    """Создаёт платёж на убирание подписи."""
+    """Создаёт платёж на снятие подписи навсегда."""
     user_id = call.from_user.id
 
     payment = await asyncio.to_thread(
         create_payment,
         PRICE_REMOVE_SIGNATURE,
-        "Убрать подпись с саблиминала",
+        "Снятие подписи навсегда",
         user_id,
         "remove_signature"
     )
@@ -414,37 +362,33 @@ async def handle_pay_remove_signature(call: types.CallbackQuery, state):
     if not payment:
         await call.message.edit_text(
             "❌ Не удалось создать платёж. Попробуй позже.",
-            reply_markup=back_to_subscribe_keyboard()
+            reply_markup=subscribe_keyboard()
         )
         await call.answer()
         return
 
     await call.message.edit_text(
-        f"💳 Убрать подпись с 1 саба — {PRICE_REMOVE_SIGNATURE} руб\n\n"
+        f"💳 Снять подпись навсегда — {PRICE_REMOVE_SIGNATURE} ₽\n\n"
         f"Перейди по ссылке для оплаты:\n"
         f"{payment['confirmation_url']}",
-        reply_markup=back_to_subscribe_keyboard()
+        reply_markup=subscribe_keyboard()
     )
     await call.answer()
 
 
 @dp.callback_query(F.data == "subscribe")
 async def handle_subscribe(call: types.CallbackQuery, state):
-    """Показывает тарифы подписки (из кнопки)."""
+    """Показывает разовые покупки (из кнопки)."""
     await call.message.edit_text(
-        f"💎 <b>Подписка — {PRICE_SUBSCRIPTION} руб/мес</b>\n\n"
-        f"Что входит:\n"
-        f"— 10 своих тем в день\n"
-        f"— 180 минут саблиминалов в день\n"
-        f"— Без подписи бота\n"
-        f"— Приоритетная генерация\n\n"
-        f"<b>Разовые покупки:</b>\n"
-        f"— 1 своя тема — {PRICE_CUSTOM_TOPIC} руб\n"
-        f"— Убрать подпись с 1 саба — {PRICE_REMOVE_SIGNATURE} руб",
+        f"💎 <b>Разовые покупки</b>\n\n"
+        f"— 1 саб (чужой голос) — {PRICE_SUBLIMINAL} ₽\n"
+        f"— 1 саб (свой голос) — {PRICE_FIRST_CLONE} ₽\n"
+        f"— Снять подпись навсегда — {PRICE_REMOVE_SIGNATURE} ₽\n\n"
+        f"<b>Первый обычный саб — бесплатно!</b>",
         parse_mode="HTML",
         reply_markup=subscribe_keyboard()
     )
-    await call.answer()    
+    await call.answer()
 
 @dp.callback_query(F.data == "donate_menu")
 async def handle_donate_menu(call: types.CallbackQuery, state):
@@ -478,7 +422,7 @@ async def handle_donate(call: types.CallbackQuery, state):
     if not payment:
         await call.message.edit_text(
             "❌ Не удалось создать платёж. Попробуй позже.",
-            reply_markup=back_to_subscribe_keyboard()
+            reply_markup=subscribe_keyboard()
         )
         await call.answer()
         return
@@ -488,7 +432,7 @@ async def handle_donate(call: types.CallbackQuery, state):
         f"Сумма: {amount} ₽\n\n"
         f"Перейди по ссылке для оплаты:\n"
         f"{payment['confirmation_url']}",
-        reply_markup=back_to_subscribe_keyboard()
+        reply_markup=subscribe_keyboard()
     )
     await call.answer()    
 
@@ -550,21 +494,6 @@ async def handle_custom_topic(call: types.CallbackQuery, state):
 
 @dp.message(SubliminalStates.waiting_for_custom_topic)
 async def handle_custom_topic_text(message: types.Message, state):
-    # Проверяем лимит
-    limits = get_user_limits(message.from_user.id)
-    usage = get_today_usage(message.from_user.id)
-
-    if usage["custom_topic_used"] >= limits["custom_topics"]:
-        await message.answer(
-            "❌ Лимит на «Свою тему» исчерпан.\n\n"
-            f"Твой лимит: {limits['custom_topics']} в день.\n\n"
-            "💎 Подписка — 10 своих тем в день\n"
-            "💳 Разовая покупка — 1 своя тема",
-            reply_markup=limit_keyboard()
-        )
-        await state.clear()
-        return
-
     if len(message.text) > 500:
         await message.answer(
             f"❌ Слишком длинный запрос ({len(message.text)} символов).\n\n"
@@ -574,25 +503,6 @@ async def handle_custom_topic_text(message: types.Message, state):
 
     user_topic = message.text
     await state.update_data(topic=user_topic)
-
-    
-    usage = get_today_usage(message.from_user.id)
-    limits = get_user_limits(message.from_user.id)
-
-    if usage["custom_topic_used"] >= limits["custom_topics"]:
-        # Лимит исчерпан — пробуем разовую
-        if use_extra_custom_topic(message.from_user.id):
-            logger.info(f"✅ Использована разовая тема для {message.from_user.id}")
-        else:
-            await message.answer(
-                "❌ Лимит на «Свою тему» исчерпан.\n\n"
-                "Купи разовую тему за 50 руб или подписку за 300 руб/мес."
-            )
-            await state.clear()
-            return
-
-    # Отмечаем использование
-    mark_custom_topic_used(message.from_user.id)
 
     status = await message.answer("⏳ Генерирую аффирмации под твой запрос...")
 
@@ -1062,61 +972,46 @@ async def handle_name(message: types.Message, state):
     data = await state.get_data()
     affirmation = data.get("affirmation")
     voice_type = data.get("voice_type", "male_1")
-    length_minutes = data.get("length_minutes")
     source = data.get("source", "")
+    payment_check_passed = False
 
-    # Определяем длину для проверки лимита
-    if length_minutes:
-        requested_minutes = length_minutes
-    else:
-        requested_minutes = 10  # по длине трека — примерно
+    # Проверяем, первый ли это бесплатный саб
+    from utils.db import get_today_usage, get_voice_id, mark_custom_topic_used
+    usage = get_today_usage(message.from_user.id)
+    free_used = usage["custom_topic_used"] >= 1
+    
+    voice_id = get_voice_id(message.from_user.id)
+    is_clone_voice = (voice_type == "clone")
 
-    # Проверяем лимиты
-    is_custom_topic = (source == "custom_topic")
-    limit_check = check_limits(
-        message.from_user.id,
-        requested_minutes,
-        is_custom_topic=is_custom_topic
-    )
-
-    if not limit_check["allowed"]:
-        reason = limit_check["reason"]
-        message_text = limit_check["message"]
-
-        # Формируем предложение
-        if reason == "custom_topic":
-            await message.answer(
-                f"❌ {message_text}\n\n"
-                f"💎 Подписка {PRICE_SUBSCRIPTION} руб/мес — 10 своих тем в день\n"
-                f"💳 Разовая покупка — {PRICE_CUSTOM_TOPIC} руб за 1 свою тему",
-                reply_markup=limit_keyboard()
-            )
-        elif reason in ("minutes_per_day", "minutes_per_hour"):
-            await message.answer(
-                f"❌ {message_text}\n\n"
-                f"💎 Подписка {PRICE_SUBSCRIPTION} руб/мес — 180 минут в день",
-                reply_markup=limit_keyboard()
-            )
+    if not payment_check_passed:
+        # Всегда просим оплату (пока заглушка)
+        if is_clone_voice:
+            price = PRICE_FIRST_CLONE
+            text = f"💳 Оплати {price} ₽ за саб своим голосом."
+        elif free_used:
+            price = PRICE_SUBLIMINAL
+            text = f"💳 Бесплатный саб уже использован. Оплати {price} ₽ за новый."
         else:
-            await message.answer(f"❌ {message_text}")
+            # Это первый саб — помечаем бесплатный использованным и пускаем
+            mark_custom_topic_used(message.from_user.id)
+            text = None
 
-        await state.clear()
-        return
+        if text:
+            await message.answer(text, reply_markup=subscribe_keyboard())
+            await state.clear()
+            return
 
-    # Сохраняем лимит для последующей записи
+    # Сохраняем название
     await state.update_data(
         subliminal_name=message.text,
         voice_offset=0,
-        voice_clicks=0,
-        requested_minutes=requested_minutes,
-        is_custom_topic=is_custom_topic
+        voice_clicks=0
     )
 
     # Генерим голос ОДИН РАЗ
     await message.answer("⏳ Готовлю голос...")
     reference_id = data.get("reference_id")
     voice_path = await generate_voice(affirmation, voice_type=voice_type, reference_id=reference_id)
-
 
     if not voice_path:
         await message.answer("❌ Не удалось создать озвучку.")
@@ -1137,7 +1032,6 @@ async def handle_name(message: types.Message, state):
     )
 
     await generate_preview(message, state)
-
 
 async def generate_preview(message: types.Message, state):
     """Генерирует короткое превью (30 сек) с текущим voice_offset."""
@@ -1608,19 +1502,13 @@ async def handle_yookassa_event(event: dict):
                 f"💝 Донат: user_id={user_id}"
             )
 
-        # Активируем в зависимости от типа
-        elif payment_type == "subscription":
-            activate_subscription(user_id, days=30)
-            logger.info(f"✅ Подписка активирована для {user_id}")
-
+        elif payment_type == "subliminal":
+            # Юзер оплатил разовый саб. Пока просто уведомляем.
+            logger.info(f"✅ Оплачен саб для {user_id}")
             await bot.send_message(
                 user_id,
-                "✅ Подписка активирована на 30 дней!\n\n"
-                "Теперь у тебя:\n"
-                "— 10 своих тем в день\n"
-                "— 180 минут саблиминалов в день\n"
-                "— Без подписи бота\n"
-                "— Приоритетная генерация"
+                "✅ Саблиминал оплачен!\n\n"
+                "Можешь приступать к созданию. /start"
             )
 
         elif payment_type == "custom_topic":
@@ -1686,7 +1574,6 @@ async def main():
     # Меню команд в Telegram
     await bot.set_my_commands([
         types.BotCommand(command="start", description="Начать"),
-        types.BotCommand(command="sub", description="Подписка и тарифы"),
         types.BotCommand(command="donate", description="Поддержать проект"),
         types.BotCommand(command="help", description="Помощь"),
     ])

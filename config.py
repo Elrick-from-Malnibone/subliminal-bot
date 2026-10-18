@@ -21,31 +21,18 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 
-# === ЛИМИТЫ ===
+# === ЦЕНЫ (тест — всё по 1 рублю) ===
+PRICE_SUBLIMINAL = 1         # обычный саб (после бесплатного)
+PRICE_FIRST_CLONE = 1        # первый клонированный саб
+PRICE_CLONE = 1              # последующие клонированные сабы
+PRICE_REMOVE_SIGNATURE = 1   # снять подпись навсегда
 
-# Бесплатный тариф
-FREE_CUSTOM_TOPICS = 1      # своих тем в день
-FREE_MINUTES_PER_DAY = 30   # минут в день
-FREE_MINUTES_PER_HOUR = 30  # минут в час
-FREE_ANTISPAM = 30          # секунд между генерациями
-
-# Подписка
-SUB_CUSTOM_TOPICS = 10       # своих тем в день
-SUB_MINUTES_PER_DAY = 180    # минут в день
-SUB_MINUTES_PER_HOUR = 90    # минут в час
-SUB_ANTISPAM = 10            # секунд между генерациями
-
-# === ЦЕНЫ  ===
-PRICE_SUBSCRIPTION = 300      # подписка
-PRICE_CUSTOM_TOPIC = 50      # разовая своя тема
-PRICE_REMOVE_SIGNATURE = 30   # убрать подпись с 1 саба
+# === АНТИСПАМ ===
+FREE_ANTISPAM = 30           # секунд между генерациями
 
 # ЮKassa
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 
-#audifush
+# Fish Audio
 FISH_API_KEY = os.getenv("FISH_API_KEY")
-
-
-
