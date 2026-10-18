@@ -164,7 +164,7 @@ async def main():
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state):
     # 1. Получаем данные
-    data = await state.get_data()
+    data = await state.get_data() or {}
     
     # 2. Сразу очищаем состояние
     await state.clear()
@@ -174,25 +174,24 @@ async def cmd_start(message: types.Message, state):
     if old_path and os.path.exists(old_path):
         try:
             os.remove(old_path)
-            print(f"🧹 Удалён старый саблиминал при /start")
-        except Exception as e:
-            print(f"Ошибка удаления: {e}")
+        except Exception:
+            pass
 
     # 4. Чистим превью
     preview_path = data.get("preview_path")
     if preview_path and os.path.exists(preview_path):
         try:
             os.remove(preview_path)
-        except Exception as e:
-            print(f"Ошибка удаления превью: {e}")
+        except Exception:
+            pass
 
     # 5. Чистим кэш голоса
     cached_voice = data.get("cached_voice_path")
     if cached_voice and os.path.exists(cached_voice):
         try:
             os.remove(cached_voice)
-        except Exception as e:
-            print(f"Ошибка удаления кэша: {e}")
+        except Exception:
+            pass
 
     # 6. Регистрация юзера
     is_new = add_user(message.from_user.id, message.from_user.username or "")
@@ -207,11 +206,22 @@ async def cmd_start(message: types.Message, state):
         except Exception as e:
             print(f"Не удалось отправить оповещение: {e}")
 
-    await message.answer(
-        "Привет! Выбери тему саблиминала:",
-        reply_markup=topics_keyboard()
-    )
-    await state.set_state(SubliminalStates.waiting_for_topic)
+    # 7. СРАЗУ ПОКАЗЫВАЕМ ВЫБОР ГОЛОСА
+    user_id = message.from_user.id
+    voice_id = get_voice_id(user_id)
+
+    if voice_id:
+        await message.answer(
+            "Привет! С чего начнем? Выбери голос:",
+            reply_markup=voices_keyboard_has_clone()
+        )
+    else:
+        await message.answer(
+            "Привет! С чего начнем? Выбери голос:",
+            reply_markup=voices_keyboard()
+        )
+        
+    await state.set_state(SubliminalStates.choosing_voice)
 
 @dp.message(F.text.in_(["/help", "/хэлп", "/помощь"]))
 async def cmd_help(message: types.Message, state):
@@ -642,14 +652,55 @@ async def handle_ok(call: types.CallbackQuery, state):
 @dp.callback_query(SubliminalStates.choosing_voice, F.data.startswith("voice_"))
 async def handle_voice(call: types.CallbackQuery, state):
     voice_type = call.data.replace("voice_", "")
+    user_id = call.from_user.id
+
+    # Сохраняем голос
     await state.update_data(voice_type=voice_type, reference_id=None)
 
-    await call.message.edit_text(
-        "✅ Голос выбран. Теперь выбери категорию трека:",
-        reply_markup=categories_keyboard()
+    # Проверяем, первый ли это саб
+    from utils.db import get_today_usage, set_pending_payment, mark_custom_topic_used
+    usage = get_today_usage(user_id)
+    free_used = usage["custom_topic_used"] >= 1
+
+    if not free_used:
+        # Это первый бесплатный саб — пускаем
+        mark_custom_topic_used(user_id)
+        await call.message.edit_text(
+            "✅ Голос выбран. Теперь выбери тему саблиминала:",
+            reply_markup=topics_keyboard()
+        )
+        await call.answer()
+        await state.set_state(SubliminalStates.waiting_for_topic)
+        return
+
+    # Это не первый саб — просим оплату
+    await state.update_data(pending_payment_type="subliminal")
+    set_pending_payment(user_id, "subliminal")
+    
+    price = PRICE_SUBLIMINAL
+    payment = await asyncio.to_thread(
+        create_payment,
+        price,
+        "Оплата саблиминала",
+        user_id,
+        "subliminal"
     )
-    await call.answer()
-    await state.set_state(SubliminalStates.choosing_track)
+
+    if not payment:
+        await call.message.edit_text(
+            "❌ Не удалось создать платёж. Попробуй позже."
+        )
+        await call.answer()
+        return
+
+    await call.message.edit_text(
+        f"💳 Для создания саблиминала нужно оплатить {price} ₽.\n\n"
+        f"Перейди по ссылке для оплаты:\n"
+        f"{payment['confirmation_url']}\n\n"
+        f"После оплаты бот продолжит автоматически.",
+        reply_markup=None
+    )
+    await call.answer()  
 
 @dp.callback_query(F.data == "use_my_voice")
 async def handle_use_my_voice(call: types.CallbackQuery, state):
@@ -663,34 +714,78 @@ async def handle_use_my_voice(call: types.CallbackQuery, state):
 
     await state.update_data(voice_type="clone", reference_id=voice_id)
 
-    await call.message.edit_text(
-        "✅ Использую твой голос. Выбери категорию трека:",
-        reply_markup=categories_keyboard()
+    # Оплата за саб клоном
+    from utils.db import set_pending_payment
+    set_pending_payment(user_id, "subliminal")
+    
+    price = PRICE_CLONE
+    payment = await asyncio.to_thread(
+        create_payment,
+        price,
+        "Оплата саблиминала своим голосом",
+        user_id,
+        "subliminal"
     )
-    await call.answer()
-    await state.set_state(SubliminalStates.choosing_track)    
+
+    if not payment:
+        await call.message.edit_text(
+            "❌ Не удалось создать платёж. Попробуй позже."
+        )
+        await call.answer()
+        return
+
+    await call.message.edit_text(
+        f"💳 Для создания саблиминала своим голосом нужно оплатить {price} ₽.\n\n"
+        f"Перейди по ссылке для оплаты:\n"
+        f"{payment['confirmation_url']}\n\n"
+        f"После оплаты бот продолжит автоматически.",
+        reply_markup=None
+    )
+    await call.answer()    
 
 @dp.callback_query(F.data == "clone_voice")
 async def handle_clone_voice(call: types.CallbackQuery, state):
+    user_id = call.from_user.id
+
+    # Сохраняем в БД, что ждём оплату за клон
+    from utils.db import set_pending_payment
+    set_pending_payment(user_id, "clone")
+    
+    price = PRICE_FIRST_CLONE
+    payment = await asyncio.to_thread(
+        create_payment,
+        price,
+        "Создание клона голоса",
+        user_id,
+        "subliminal"
+    )
+
+    if not payment:
+        await call.message.edit_text("❌ Не удалось создать платёж. Попробуй позже.")
+        await call.answer()
+        return
+
     await call.message.edit_text(
-        "🎙 <b>Запись голоса для клона</b>\n\n"
-        "Запиши голосовое сообщение (около 1 минуты), читая этот текст:\n\n"
-        "<i>Привет. Меня зовут [имя]. Я записываю свой голос для создания персонального саблиминала. Я говорю спокойно и чётко.\n\n"
-        "Сегодня хороший день. Я читаю этот текст, чтобы мой голос был узнаваемым. Один, два, три, четыре, пять, шесть, семь, восемь, девять, десять.\n\n"
-        "Я люблю утро, когда солнце только встаёт. Я люблю вечер, когда становится тихо. Я люблю дождь, который стучит по крыше. Я люблю ветер, который шумит в листьях.\n\n"
-        "Моя речь ровная и естественная. Я не тороплюсь. Я дышу спокойно. Я чувствую себя комфортно.\n\n"
-        "Этот голос — мой. Он звучит так, как я говорю каждый день. Я читаю этот текст, чтобы мой голос был узнаваемым.\n\n"
-        "Спасибо. Это был мой голос.</i>\n\n"
-        "⚠️ Читай чётко, с выражением, не торопись.",
-        parse_mode="HTML"
+        f"💳 Для создания клона голоса нужно оплатить {price} ₽.\n\n"
+        f"Перейди по ссылке для оплаты:\n"
+        f"{payment['confirmation_url']}\n\n"
+        f"После оплаты я пришлю текст для чтения.",
+        reply_markup=None
     )
     await call.answer()
-    await state.set_state(SubliminalStates.waiting_for_voice_sample)
 
 
-@dp.message(SubliminalStates.waiting_for_voice_sample, F.voice)
+@dp.message(F.voice)
 async def handle_voice_sample(message: types.Message, state):
     user_id = message.from_user.id
+
+    # ПРОВЕРКА: ждёт ли бот от юзера клонирования?
+    from utils.db import get_pending_payment
+    pending = get_pending_payment(user_id)
+    if pending != "clone":
+        await message.answer("Чтобы записать голос для клонирования, нажми /start и выбери «✨ Мой голос (клонировать)».")
+        return
+
     status = await message.answer("⏳ Обрабатываю запись...")
 
     try:
@@ -744,7 +839,6 @@ async def handle_voice_sample(message: types.Message, state):
         await state.clear()
         return
 
-    # ВОТ ЗДЕСЬ БЫЛ СБИТ ОТСТУП
     save_voice_id(user_id, voice_id)
 
     await status.edit_text(
@@ -770,8 +864,12 @@ async def handle_voice_sample(message: types.Message, state):
     else:
         await message.answer("⚠️ Не удалось сгенерировать тестовую озвучку, но клон сохранён.")
 
+    # Чистим флаг ожидания оплаты/клонирования
+    from utils.db import clear_pending_payment
+    clear_pending_payment(user_id)
+
     await message.answer(
-        "Выбери голос:",
+        "Теперь выбери голос для своего саблиминала:",
         reply_markup=voices_keyboard_has_clone()
     )
     
@@ -1510,13 +1608,46 @@ async def handle_yookassa_event(event: dict):
             )
 
         elif payment_type == "subliminal":
-            # Юзер оплатил разовый саб. Пока просто уведомляем.
             logger.info(f"✅ Оплачен саб для {user_id}")
-            await bot.send_message(
-                user_id,
-                "✅ Саблиминал оплачен!\n\n"
-                "Можешь приступать к созданию. /start"
-            )
+            
+            from utils.db import get_pending_payment, clear_pending_payment
+            pending = get_pending_payment(user_id)
+            
+            # Получаем нормальный контекст состояния (FSM) по юзеру
+            state = dp.fsm.get_context(bot=bot, chat_id=user_id, user_id=user_id)
+
+            if pending == "clone":
+                # Юзер оплатил клон — присылаем текст и переводим в состояние записи
+                await bot.send_message(
+                    user_id,
+                    "✅ <b>Оплата за клонирование прошла!</b>\n\n"
+                    "Теперь запиши голосовое сообщение (около 1 минуты), читая этот текст:\n\n"
+                    "<i>Привет. Меня зовут [имя]. Я записываю свой голос для создания персонального саблиминала. Я говорю спокойно и чётко.\n\n"
+                    "Сегодня хороший день. Я читаю этот текст, чтобы мой голос был узнаваемым. Один, два, три, четыре, пять, шесть, семь, восемь, девять, десять.\n\n"
+                    "Я люблю утро, когда солнце только встаёт. Я люблю вечер, когда становится тихо. Я люблю дождь, который стучит по крыше. Я люблю ветер, который шумит в листьях.\n\n"
+                    "Моя речь ровная и естественная. Я не тороплюсь. Я дышу спокойно. Я чувствую себя комфортно.\n\n"
+                    "Этот голос — мой. Он звучит так, как я говорю каждый день. Я читаю этот текст, чтобы мой голос был узнаваемым.\n\n"
+                    "Спасибо. Это был мой голос.</i>\n\n"
+                    "⚠️ Читай чётко, с выражением, не торопись.",
+                    parse_mode="HTML"
+                )
+                
+                # Нормально ставим состояние
+                await state.set_state(SubliminalStates.waiting_for_voice_sample)
+                await state.update_data(voice_type="clone")
+                
+            else:
+                # Юзер оплатил обычный саб
+                await bot.send_message(
+                    user_id,
+                    "✅ Оплата прошла! Теперь выбери тему саблиминала:",
+                    reply_markup=topics_keyboard()
+                )
+                
+                # Нормально ставим состояние
+                await state.set_state(SubliminalStates.waiting_for_topic)
+            
+            clear_pending_payment(user_id)
 
         elif payment_type == "custom_topic":
             add_extra_custom_topics(user_id, count=1)

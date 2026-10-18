@@ -544,3 +544,42 @@ def get_voice_id(user_id: int) -> str | None:
         c.execute("SELECT voice_id FROM users WHERE user_id = ?", (user_id,))
         row = c.fetchone()
         return row[0] if row else None
+
+def set_pending_payment(user_id: int, payment_type: str):
+    """Запоминает, что юзер ждёт оплату, и что именно он покупает."""
+    today = datetime.now().date().isoformat()
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        # Добавляем колонку pending_payment, если её нет
+        c.execute("PRAGMA table_info(users)")
+        columns = [row[1] for row in c.fetchall()]
+        if "pending_payment" not in columns:
+            c.execute("ALTER TABLE users ADD COLUMN pending_payment TEXT DEFAULT NULL")
+        
+        c.execute(
+            "UPDATE users SET pending_payment = ? WHERE user_id = ?",
+            (payment_type, user_id)
+        )
+        conn.commit()
+
+
+def get_pending_payment(user_id: int) -> str | None:
+    """Возвращает тип ожидаемой оплаты или None."""
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("PRAGMA table_info(users)")
+        columns = [row[1] for row in c.fetchall()]
+        if "pending_payment" not in columns:
+            return None
+            
+        c.execute("SELECT pending_payment FROM users WHERE user_id = ?", (user_id,))
+        row = c.fetchone()
+        return row[0] if row else None
+
+
+def clear_pending_payment(user_id: int):
+    """Очищает флаг ожидаемой оплаты."""
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("UPDATE users SET pending_payment = NULL WHERE user_id = ?", (user_id,))
+        conn.commit()    
