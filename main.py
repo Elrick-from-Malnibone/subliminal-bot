@@ -738,10 +738,9 @@ async def handle_clone_voice(call: types.CallbackQuery, state):
 async def handle_voice_sample(message: types.Message, state):
     user_id = message.from_user.id
 
-    # ПРОВЕРКА: ждёт ли бот от юзера клонирования?
-    from utils.db import get_pending_payment
-    pending = get_pending_payment(user_id)
-    if pending != "clone":
+    # Проверяем, ждёт ли бот голосовое (через состояние)
+    current_state = await state.get_state()
+    if current_state != SubliminalStates.waiting_for_voice_sample:
         await message.answer("Чтобы записать голос для клонирования, нажми /start и выбери «✨ Мой голос (клонировать)».")
         return
 
