@@ -209,3 +209,14 @@ def publish_keyboard():
             InlineKeyboardButton(text="❌ Не надо", callback_data="publish_no"),
         ],
     ])
+
+def feedback_keyboard():
+    """Клавиатура для обратной связи."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="💬 Написать отзыв", callback_data="feedback_start"),
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_voice"),
+        ],
+    ])

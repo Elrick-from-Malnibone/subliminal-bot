@@ -14,3 +14,4 @@ class SubliminalStates(StatesGroup):
     waiting_for_name = State()
     waiting_for_broadcast = State()
     waiting_for_voice_sample = State()
+    waiting_for_feedback = State()
