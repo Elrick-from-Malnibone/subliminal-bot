@@ -630,24 +630,12 @@ async def handle_regen(call: types.CallbackQuery, state):
 
 @dp.callback_query(F.data == "affirm_ok")
 async def handle_ok(call: types.CallbackQuery, state):
-    user_id = call.from_user.id
-    voice_id = get_voice_id(user_id)  # проверяем, есть ли клон в БД
-
-    if voice_id:
-        # Клон есть — показываем расширенную клавиатуру (с кнопкой "Мой голос")
-        await call.message.edit_text(
-            "✅ Принято. Теперь выбери голос:",
-            reply_markup=voices_keyboard_has_clone()
-        )
-    else:
-        # Клона нет — обычная клавиатура
-        await call.message.edit_text(
-            "✅ Принято. Теперь выбери голос:",
-            reply_markup=voices_keyboard()
-        )
-    
+    await call.message.edit_text(
+        "✅ Принято. Теперь выбери категорию трека:",
+        reply_markup=categories_keyboard()
+    )
     await call.answer()
-    await state.set_state(SubliminalStates.choosing_voice)
+    await state.set_state(SubliminalStates.choosing_track)
 
 @dp.callback_query(SubliminalStates.choosing_voice, F.data.startswith("voice_"))
 async def handle_voice(call: types.CallbackQuery, state):
