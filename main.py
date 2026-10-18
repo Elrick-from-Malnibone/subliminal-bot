@@ -826,12 +826,13 @@ async def handle_voice_sample(message: types.Message, state):
     from utils.db import clear_pending_payment
     clear_pending_payment(user_id)
 
+    # СРАЗУ ПЕРЕХОДИМ К ВЫБОРУ ТЕМЫ (без показа голосов)
     await message.answer(
-        "Теперь выбери голос для своего саблиминала:",
-        reply_markup=voices_keyboard_has_clone()
+        "✅ Клон готов! Теперь выбери тему саблиминала:",
+        reply_markup=topics_keyboard()
     )
     
-    await state.set_state(SubliminalStates.choosing_voice)
+    await state.set_state(SubliminalStates.waiting_for_topic)
 
 
 @dp.callback_query(SubliminalStates.choosing_track, F.data.startswith("cat_"))
