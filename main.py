@@ -595,53 +595,7 @@ async def handle_ok(call: types.CallbackQuery, state):
     await call.answer()
     await state.set_state(SubliminalStates.choosing_track)
 
-@dp.callback_query(F.data == "feedback_start")
-async def handle_feedback_start(call: types.CallbackQuery, state):
-    await call.message.edit_text(
-        "💬 <b>Обратная связь</b>\n\n"
-        "Напиши свой вопрос, проблему или предложение. Я передам это разработчику.\n\n"
-        "Пожалуйста, пиши подробно, чтобы я мог быстрее разобраться.",
-        parse_mode="HTML"
-    )
-    await call.answer()
-    await state.set_state(SubliminalStates.waiting_for_feedback)
-
-
-@dp.message(SubliminalStates.waiting_for_feedback)
-async def handle_feedback_text(message: types.Message, state):
-    user_id = message.from_user.id
-    username = message.from_user.username or "без_юзернейма"
-    text = message.text
-
-    # Отправляем в чат
-    try:
-        await bot.send_message(
-            chat_id=FEEDBACK_CHAT_ID,
-            text=f"📩 <b>Новое сообщение!</b>\n\n"
-                 f"👤 От: @{username} (ID: {user_id})\n"
-                 f"💬 Текст: {text}",
-            parse_mode="HTML"
-        )
-        await message.answer("✅ Спасибо! Твой отзыв отправлен.")
-    except Exception as e:
-        logger.error(f"Ошибка отправки фидбека: {e}")
-        await message.answer("⚠️ Не удалось отправить сообщение. Попробуй позже.")
-
-    await state.clear()
-    
-    # Снова показываем выбор голоса, чтобы юзер мог продолжить
-    voice_id = get_voice_id(user_id)
-    if voice_id:
-        await message.answer(
-            "Хочешь сделать саб? Выбери голос:",
-            reply_markup=voices_keyboard_has_clone()
-        )
-    else:
-        await message.answer(
-            "Хочешь сделать саб? Выбери голос:",
-            reply_markup=voices_keyboard()
-        )
-    await state.set_state(SubliminalStates.choosing_voice)    
+ 
 
 @dp.callback_query(SubliminalStates.choosing_voice, F.data.startswith("voice_"))
 async def handle_voice(call: types.CallbackQuery, state):
