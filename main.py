@@ -445,21 +445,6 @@ async def handle_custom(call: types.CallbackQuery, state):
 
 @dp.callback_query(F.data == "topic_custom_topic")
 async def handle_custom_topic(call: types.CallbackQuery, state):
-    
-    limits = get_user_limits(call.from_user.id)
-    usage = get_today_usage(call.from_user.id)
-
-    if usage["custom_topic_used"] >= limits["custom_topics"]:
-        await call.message.edit_text(
-            "❌ Лимит на «Свою тему» исчерпан.\n\n"
-            f"Твой лимит: {limits['custom_topics']} в день.\n\n"
-            "💎 Подписка — 10 своих тем в день\n"
-            "💳 Разовая покупка — 1 своя тема",
-            reply_markup=limit_keyboard()
-        )
-        await call.answer()
-        return
-
     await state.set_state(SubliminalStates.waiting_for_custom_topic)
 
     await call.message.edit_text(
@@ -471,7 +456,6 @@ async def handle_custom_topic(call: types.CallbackQuery, state):
         "Нейронка сгенерирует аффирмации под твой запрос."
     )
     await call.answer()
-
 
 @dp.message(SubliminalStates.waiting_for_custom_topic)
 async def handle_custom_topic_text(message: types.Message, state):
@@ -537,11 +521,11 @@ async def handle_binaural(call: types.CallbackQuery, state):
 
     await call.message.edit_text(
         "✅ Ритм выбран.\n\n"
-        "🎙 Теперь выбери голос:",
-        reply_markup=voices_keyboard()
+        "🎧 Теперь выбери категорию трека:",
+        reply_markup=categories_keyboard()
     )
     await call.answer()
-    await state.set_state(SubliminalStates.choosing_voice)
+    await state.set_state(SubliminalStates.choosing_track)
 
 
 @dp.message(SubliminalStates.waiting_for_custom_text)
