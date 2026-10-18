@@ -223,11 +223,6 @@ async def cmd_start(message: types.Message, state):
             reply_markup=voices_keyboard()
         )
 
-    # Кнопка обратной связи
-    await message.answer(
-        "💬 Есть вопрос или предложение?",
-        reply_markup=feedback_keyboard()
-    )
         
     await state.set_state(SubliminalStates.choosing_voice)
 
