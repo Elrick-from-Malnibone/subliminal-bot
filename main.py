@@ -39,7 +39,7 @@ from utils.db import (
     can_use_custom_topic, mark_custom_topic_used, get_all_users,
     has_active_subscription, get_user_limits, get_today_usage,
     check_limits, add_usage,
-    activate_subscription, remove_signature_for_user, has_no_signature,
+    activate_subscription,
     add_extra_custom_topics, use_extra_custom_topic,
     save_voice_id, get_voice_id, 
 )
@@ -355,35 +355,6 @@ async def handle_pay_sub(call: types.CallbackQuery, state):
     )
     await call.answer()
 
-
-@dp.callback_query(F.data == "pay_remove_signature")
-async def handle_pay_remove_signature(call: types.CallbackQuery, state):
-    """Создаёт платёж на снятие подписи навсегда."""
-    user_id = call.from_user.id
-
-    payment = await asyncio.to_thread(
-        create_payment,
-        PRICE_REMOVE_SIGNATURE,
-        "Снятие подписи навсегда",
-        user_id,
-        "remove_signature"
-    )
-
-    if not payment:
-        await call.message.edit_text(
-            "❌ Не удалось создать платёж. Попробуй позже.",
-            reply_markup=subscribe_keyboard()
-        )
-        await call.answer()
-        return
-
-    await call.message.edit_text(
-        f"💳 Снять подпись навсегда — {PRICE_REMOVE_SIGNATURE} ₽\n\n"
-        f"Перейди по ссылке для оплаты:\n"
-        f"{payment['confirmation_url']}",
-        reply_markup=subscribe_keyboard()
-    )
-    await call.answer()
 
 
 @dp.callback_query(F.data == "subscribe")
@@ -1290,11 +1261,8 @@ async def generate_subliminal_background(data: dict):
             size_mb = os.path.getsize(subliminal_path) / 1024 / 1024
             logger.info(f"📤 ФАЙЛ: {subliminal_path}, размер {size_mb:.1f} МБ")
 
-            # Проверяем, нужна ли подпись
-            if has_active_subscription(user_id) or has_no_signature(user_id):
-                caption = f"🎧 {subliminal_name}"
-            else:
-                caption = f"🎧 {subliminal_name}\n\n🤖 Сделано в @SubliminalGenBot"
+                        # Всегда ставим подпись
+            caption = f"🎧 {subliminal_name}\n\n🤖 Сделано в @SubliminalGenBot"
 
             audio_file = FSInputFile(subliminal_path)
 
@@ -1339,17 +1307,10 @@ async def generate_subliminal_background(data: dict):
             await bot.send_message(
                 chat_id,
                 "📢 <b>Хочешь опубликовать свой саблиминал в канале?</b>\n\n"
-                "Он появится здесь: https://t.me/SubliminalBot_Channel\n\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "🤖 <b>А что такое «подпись бота»?</b>\n"
-                "Сейчас каждый саблиминал, который ты делаешь, автоматически помечается: "
-                "«🤖 Сделано в @SubliminalGenBot».\n"
-                "Если ты хочешь, чтобы этой надписи на твоих сабах не было, "
-                "ты можешь убрать её навсегда за небольшую плату.",
+                "Он появится здесь: https://t.me/SubliminalBot_Channel",
                 parse_mode="HTML",
                 reply_markup=publish_keyboard()
             )
-
         else:
             logger.error(f"❌ Саблиминал не создан: {subliminal_path}")
             await bot.send_message(chat_id, "❌ Не удалось собрать саблиминал.")
@@ -1501,9 +1462,7 @@ async def publish_subliminal(call: types.CallbackQuery, state, anonymous: bool):
             else:
                 caption = f"🎧 {subliminal_name}\n\n👤 {call.from_user.full_name}"
 
-                # Подпись бота — если нет подписки
-        if not (has_active_subscription(call.from_user.id) or has_no_signature(call.from_user.id)):
-            caption += "\n\n🤖 Сделано в @SubliminalGenBot"
+        caption += "\n\n🤖 Сделано в @SubliminalGenBot"
 
         audio_file = FSInputFile(subliminal_path)
         await bot.send_audio(
@@ -1533,6 +1492,7 @@ async def publish_subliminal(call: types.CallbackQuery, state, anonymous: bool):
         reply_markup=topics_keyboard()
     )
     await state.set_state(SubliminalStates.waiting_for_topic)
+
 
 async def handle_yookassa_event(event: dict):
     """Обрабатывает уведомление от ЮKassa об оплате."""
@@ -1620,14 +1580,7 @@ async def handle_yookassa_event(event: dict):
                 "Можешь использовать её в боте."
             )
 
-        elif payment_type == "remove_signature":
-            remove_signature_for_user(user_id)
-            logger.info(f"✅ Подпись убрана для {user_id}")
-            await bot.send_message(
-                user_id,
-                "✅ Подпись убрана!\n\n"
-                "Теперь саблиминалы будут без подписи бота."
-            )
+        
 
     except Exception as e:
         logger.error(f"❌ Ошибка обработки вебхука: {e}")

@@ -200,13 +200,10 @@ def donate_keyboard():
     ])
 
 def publish_keyboard():
-    """Клавиатура после генерации саблиминала — предложение опубликовать + убрать подпись."""
+    """Клавиатура после генерации саблиминала — предложение опубликовать."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="📢 Опубликовать в канал", callback_data="publish_yes"),
-        ],
-        [
-            InlineKeyboardButton(text="💳 Убрать подпись бота навсегда (1 ₽)", callback_data="pay_remove_signature"),
         ],
         [
             InlineKeyboardButton(text="❌ Не надо", callback_data="publish_no"),
