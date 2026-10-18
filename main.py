@@ -1059,33 +1059,7 @@ async def handle_name(message: types.Message, state):
     affirmation = data.get("affirmation")
     voice_type = data.get("voice_type", "male_1")
     source = data.get("source", "")
-    payment_check_passed = False
 
-    # Проверяем, первый ли это бесплатный саб
-    from utils.db import get_today_usage, get_voice_id, mark_custom_topic_used
-    usage = get_today_usage(message.from_user.id)
-    free_used = usage["custom_topic_used"] >= 1
-    
-    voice_id = get_voice_id(message.from_user.id)
-    is_clone_voice = (voice_type == "clone")
-
-    if not payment_check_passed:
-        # Всегда просим оплату (пока заглушка)
-        if is_clone_voice:
-            price = PRICE_FIRST_CLONE
-            text = f"💳 Оплати {price} ₽ за саб своим голосом."
-        elif free_used:
-            price = PRICE_SUBLIMINAL
-            text = f"💳 Бесплатный саб уже использован. Оплати {price} ₽ за новый."
-        else:
-            # Это первый саб — помечаем бесплатный использованным и пускаем
-            mark_custom_topic_used(message.from_user.id)
-            text = None
-
-        if text:
-            await message.answer(text, reply_markup=subscribe_keyboard())
-            await state.clear()
-            return
 
     # Сохраняем название
     await state.update_data(
