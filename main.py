@@ -60,7 +60,6 @@ from keyboards.inline import (
     binaural_keyboard,
     voice_tune_keyboard,
     limit_keyboard,
-    subscribe_keyboard,
     donate_keyboard,
     voices_keyboard_has_clone,
     feedback_keyboard,
@@ -236,7 +235,7 @@ async def cmd_help(message: types.Message, state):
         "📢 Публикация в канал\n\n"
         "<b>Команды:</b>\n"
         "/start — начать / выбрать тему\n"
-        "/sub — подписка и тарифы\n"
+        "/feedback — отзывы и предложения\n"
         "/help — эта справка",
         parse_mode="HTML"
     )
@@ -344,7 +343,7 @@ async def handle_pay_sub(call: types.CallbackQuery, state):
     if not payment:
         await call.message.edit_text(
             "❌ Не удалось создать платёж. Попробуй позже.",
-            reply_markup=subscribe_keyboard()
+            
         )
         await call.answer()
         return
@@ -354,25 +353,11 @@ async def handle_pay_sub(call: types.CallbackQuery, state):
         f"Перейди по ссылке для оплаты:\n"
         f"{payment['confirmation_url']}\n\n"
         f"После оплаты бот пришлёт доступ.",
-        reply_markup=subscribe_keyboard()
+        
     )
     await call.answer()
 
 
-
-@dp.callback_query(F.data == "subscribe")
-async def handle_subscribe(call: types.CallbackQuery, state):
-    """Показывает разовые покупки (из кнопки)."""
-    await call.message.edit_text(
-        f"💎 <b>Разовые покупки</b>\n\n"
-        f"— 1 саб (чужой голос) — {PRICE_SUBLIMINAL} ₽\n"
-        f"— 1 саб (свой голос) — {PRICE_FIRST_CLONE} ₽\n"
-        f"— Снять подпись навсегда — {PRICE_REMOVE_SIGNATURE} ₽\n\n"
-        f"<b>Первый обычный саб — бесплатно!</b>",
-        parse_mode="HTML",
-        reply_markup=subscribe_keyboard()
-    )
-    await call.answer()
 
 @dp.callback_query(F.data == "donate_menu")
 async def handle_donate_menu(call: types.CallbackQuery, state):
@@ -406,7 +391,7 @@ async def handle_donate(call: types.CallbackQuery, state):
     if not payment:
         await call.message.edit_text(
             "❌ Не удалось создать платёж. Попробуй позже.",
-            reply_markup=subscribe_keyboard()
+            
         )
         await call.answer()
         return
@@ -416,7 +401,7 @@ async def handle_donate(call: types.CallbackQuery, state):
         f"Сумма: {amount} ₽\n\n"
         f"Перейди по ссылке для оплаты:\n"
         f"{payment['confirmation_url']}",
-        reply_markup=subscribe_keyboard()
+        
     )
     await call.answer()    
 
@@ -1620,6 +1605,14 @@ async def cleanup_output():
 
             if removed:
                 print(f"🧹 Чистка {folder}: удалено {removed} файлов")
+
+@dp.message(F.text.in_(["/feedback", "/отзыв", "/фидбек"]))
+async def cmd_feedback(message: types.Message, state):
+    await message.answer(
+        "💬 Отзыв, жалобы, предложения сюда -> @SubliminalReviews",
+        parse_mode="HTML"
+    )
+
 async def main():
     init_db()
     asyncio.create_task(cleanup_output())
@@ -1627,6 +1620,7 @@ async def main():
     # Меню команд в Telegram
     await bot.set_my_commands([
         types.BotCommand(command="start", description="Начать"),
+        types.BotCommand(command="feedback", description="Отзывы и предложения"),
         types.BotCommand(command="donate", description="Поддержать проект"),
         types.BotCommand(command="help", description="Помощь"),
     ])

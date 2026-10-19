@@ -175,14 +175,6 @@ def limit_keyboard():
         ],
     ])
 
-def subscribe_keyboard():
-    """Клавиатура разовых покупок (без снятия подписи)."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_topic"),
-        ],
-    ])
-
 def donate_keyboard():
     """Клавиатура доната."""
     return InlineKeyboardMarkup(inline_keyboard=[
