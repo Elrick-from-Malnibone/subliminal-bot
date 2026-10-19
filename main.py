@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 from aiogram.exceptions import TelegramBadRequest
 from config import (
     BOT_TOKEN, ADMIN_ID,
-    PRICE_SUBLIMINAL, PRICE_FIRST_CLONE, PRICE_CLONE, PRICE_REMOVE_SIGNATURE,
+    PRICE_SUBLIMINAL, PRICE_FIRST_CLONE, PRICE_CLONE,
     FEEDBACK_CHAT_ID,
 )
 from aiogram import Bot, Dispatcher, types, F
