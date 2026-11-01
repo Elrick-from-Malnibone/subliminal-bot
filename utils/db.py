@@ -60,12 +60,17 @@ def init_db():
             )
         """)
 
-                # Миграция: добавляем voice_id в users
+                # Миграции
         c.execute("PRAGMA table_info(users)")
         columns = [row[1] for row in c.fetchall()]
+
         if "voice_id" not in columns:
             c.execute("ALTER TABLE users ADD COLUMN voice_id TEXT DEFAULT NULL")
             print("🔧 Миграция: добавлена колонка voice_id")
+
+        if "free_subliminal_used" not in columns:
+            c.execute("ALTER TABLE users ADD COLUMN free_subliminal_used INTEGER DEFAULT 0")
+            print("🔧 Миграция: добавлена колонка free_subliminal_used")
 
         conn.commit()
 
@@ -583,3 +588,22 @@ def clear_pending_payment(user_id: int):
         c = conn.cursor()
         c.execute("UPDATE users SET pending_payment = NULL WHERE user_id = ?", (user_id,))
         conn.commit()    
+
+def has_used_free_subliminal(user_id: int) -> bool:
+    """Проверяет, использовал ли юзер свой бесплатный первый саб."""
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("SELECT free_subliminal_used FROM users WHERE user_id = ?", (user_id,))
+        row = c.fetchone()
+        return bool(row and row[0])
+
+
+def mark_free_subliminal_used(user_id: int):
+    """Помечает, что бесплатный саб использован."""
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute(
+            "UPDATE users SET free_subliminal_used = 1 WHERE user_id = ?",
+            (user_id,)
+        )
+        conn.commit()        

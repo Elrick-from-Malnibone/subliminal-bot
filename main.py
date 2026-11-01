@@ -42,7 +42,8 @@ from utils.db import (
     check_limits, add_usage,
     activate_subscription,
     add_extra_custom_topics, use_extra_custom_topic,
-    save_voice_id, get_voice_id, 
+    save_voice_id, get_voice_id,
+    has_used_free_subliminal, mark_free_subliminal_used,
 )
 from services.payments import create_payment, check_payment
 from aiogram_sqlite_storage.sqlitestore import SQLStorage
@@ -590,16 +591,15 @@ async def handle_voice(call: types.CallbackQuery, state):
     # Сохраняем голос
     await state.update_data(voice_type=voice_type, reference_id=None)
 
-    # Проверяем, первый ли это саб
-    from utils.db import get_today_usage, set_pending_payment, mark_custom_topic_used
-    usage = get_today_usage(user_id)
-    free_used = usage["custom_topic_used"] >= 1
+        # Проверяем, использовал ли юзер бесплатный саб
+    from utils.db import set_pending_payment
 
-    if not free_used:
-        # Это первый бесплатный саб — пускаем
-        mark_custom_topic_used(user_id)
+    if not has_used_free_subliminal(user_id):
+        # Первый саб — бесплатно. Флаг сожжём только после успешной генерации.
+        await state.update_data(is_free_subliminal=True)
         await call.message.edit_text(
-            "✅ Голос выбран. Теперь выбери тему саблиминала:",
+            "✅ Голос выбран. Это твой первый саб — он бесплатный!\n\n"
+            "Теперь выбери тему саблиминала:",
             reply_markup=topics_keyboard()
         )
         await call.answer()
@@ -1259,6 +1259,11 @@ async def generate_subliminal_background(data: dict):
             # Логируем
             source = data.get("source", "unknown")
             log_generation(user_id, source)
+
+                        # Если это был бесплатный первый саб — сжигаем флаг
+            if data.get("is_free_subliminal"):
+                mark_free_subliminal_used(user_id)
+                logger.info(f"🎁 Бесплатный саб использован: user_id={user_id}")
 
             # Записываем лимит
             requested_minutes = data.get("requested_minutes", 0)
