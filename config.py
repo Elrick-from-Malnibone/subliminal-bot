@@ -23,8 +23,8 @@ CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 # === ЦЕНЫ ===
 PRICE_SUBLIMINAL = 100        # обычный саб (после бесплатного)
-PRICE_FIRST_CLONE = 200       # первый саб с клоном голоса
-PRICE_CLONE = 150           # последующие сабы с клоном
+PRICE_FIRST_CLONE = 1       # первый саб с клоном голоса
+PRICE_CLONE = 1           # последующие сабы с клоном
 
 # === АНТИСПАМ ===
 FREE_ANTISPAM = 30           # секунд между генерациями
