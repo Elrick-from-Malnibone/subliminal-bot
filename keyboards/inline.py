@@ -35,7 +35,7 @@ def voices_keyboard():
     ])
 
 def voices_keyboard_has_clone():
-    """Клавиатура выбора голоса, если клон уже есть."""
+    """Клавиатура выбора голоса, если клон уже есть (кнопка клона убрана)."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🎙 Мужской обычный", callback_data="voice_male_1"),
@@ -44,9 +44,6 @@ def voices_keyboard_has_clone():
         [
             InlineKeyboardButton(text="🎤 Женский обычный", callback_data="voice_female_1"),
             InlineKeyboardButton(text="🎤 Женский мягкий", callback_data="voice_female_2"),
-        ],
-        [
-            InlineKeyboardButton(text="✨ Мой голос", callback_data="use_my_voice"),
         ],
         [
             InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_topic"),
@@ -185,17 +182,6 @@ def donate_keyboard():
         ],
         [
             InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_topic"),
-        ],
-    ])
-
-def publish_keyboard():
-    """Клавиатура после генерации саблиминала — предложение опубликовать."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="📢 Опубликовать в канал", callback_data="publish_yes"),
-        ],
-        [
-            InlineKeyboardButton(text="❌ Не надо", callback_data="publish_no"),
         ],
     ])
 
