@@ -670,7 +670,8 @@ async def handle_voice(call: types.CallbackQuery, state):
         return
 
     await call.message.edit_text(
-        f"💳 Для создания саблиминала нужно оплатить {price} ₽.\n\n"
+        f"💳 Твой бесплатный саб уже использован.\n\n"
+        f"Следующий саб (любая тема на выбор) — {price} ₽.\n"
         f"Перейди по ссылке для оплаты:\n"
         f"{payment['confirmation_url']}\n\n"
         f"После оплаты бот продолжит автоматически.",

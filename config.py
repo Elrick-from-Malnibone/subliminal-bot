@@ -22,7 +22,7 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 # === ЦЕНЫ ===
-PRICE_SUBLIMINAL = 100        # обычный саб (после бесплатного)
+PRICE_SUBLIMINAL = 150        # обычный саб (после бесплатного)
 PRICE_FIRST_CLONE = 1       # первый саб с клоном голоса
 PRICE_CLONE = 1           # последующие сабы с клоном
 
