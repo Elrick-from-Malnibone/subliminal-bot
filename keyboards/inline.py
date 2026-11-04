@@ -13,8 +13,8 @@ def topics_keyboard():
          InlineKeyboardButton(text="🔥 Мотивация", callback_data="topic_motivation")],
         [InlineKeyboardButton(text="🍀 Удача", callback_data="topic_luck"),
          InlineKeyboardButton(text="🧲 Магнетизм", callback_data="topic_magnetism")],
-        [InlineKeyboardButton(text="✍️ Свой текст", callback_data="topic_custom")],
-        [InlineKeyboardButton(text="🎯 Своя тема", callback_data="topic_custom_topic")],
+        [InlineKeyboardButton(text="✍️ Свой текст (150 ₽)", callback_data="topic_custom")],
+        [InlineKeyboardButton(text="🎯 Своя тема (150 ₽)", callback_data="topic_custom_topic")],
     ])
 
 

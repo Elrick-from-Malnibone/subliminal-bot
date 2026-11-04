@@ -427,24 +427,67 @@ async def handle_topic(call: types.CallbackQuery, state):
 
 @dp.callback_query(F.data == "topic_custom")
 async def handle_custom(call: types.CallbackQuery, state):
-    await call.message.edit_text("Напиши, какой саблиминал ты хочешь:")
+    user_id = call.from_user.id
+    
+    # Сразу требуем оплату (150 руб)
+    from utils.db import set_pending_payment
+    set_pending_payment(user_id, "custom_text")  # <--- ИЗМЕНЕНО ТУТ
+    
+    price = 150
+    payment = await asyncio.to_thread(
+        create_payment,
+        price,
+        "Оплата своего текста",
+        user_id,
+        "subliminal"
+    )
+
+    if not payment:
+        await call.message.edit_text("❌ Не удалось создать платёж. Попробуй позже.")
+        await call.answer()
+        return
+
+    await call.message.edit_text(
+        f"💳 Свой текст — {price} ₽.\n\n"
+        f"Перейди по ссылке для оплаты:\n"
+        f"{payment['confirmation_url']}\n\n"
+        f"После оплаты бот продолжит автоматически.",
+        reply_markup=None
+    )
     await call.answer()
     await state.set_state(SubliminalStates.waiting_for_custom_text)
 
-
 @dp.callback_query(F.data == "topic_custom_topic")
 async def handle_custom_topic(call: types.CallbackQuery, state):
-    await state.set_state(SubliminalStates.waiting_for_custom_topic)
+    user_id = call.from_user.id
+    
+    # Сразу требуем оплату (150 руб)
+    from utils.db import set_pending_payment
+    set_pending_payment(user_id, "custom_topic_payment")  # <--- ИЗМЕНЕНО ТУТ
+    
+    price = 150
+    payment = await asyncio.to_thread(
+        create_payment,
+        price,
+        "Оплата своей темы",
+        user_id,
+        "subliminal"
+    )
+
+    if not payment:
+        await call.message.edit_text("❌ Не удалось создать платёж. Попробуй позже.")
+        await call.answer()
+        return
 
     await call.message.edit_text(
-        "🎯 Напиши свою тему — то, чего нет в готовом списке.\n\n"
-        "Например:\n"
-        "• хочу сдать экзамен\n"
-        "• хочу наладить сон\n"
-        "• хочу найти своё дело\n\n"
-        "Нейронка сгенерирует аффирмации под твой запрос."
+        f"💳 Своя тема — {price} ₽.\n\n"
+        f"Перейди по ссылке для оплаты:\n"
+        f"{payment['confirmation_url']}\n\n"
+        f"После оплаты бот продолжит автоматически.",
+        reply_markup=None
     )
     await call.answer()
+    await state.set_state(SubliminalStates.waiting_for_custom_topic)
 
 @dp.message(SubliminalStates.waiting_for_custom_topic)
 async def handle_custom_topic_text(message: types.Message, state):
@@ -1528,26 +1571,20 @@ async def handle_yookassa_event(event: dict):
             # Получаем нормальный контекст состояния (FSM) по юзеру
             state = dp.fsm.get_context(bot=bot, chat_id=user_id, user_id=user_id)
 
-            if pending == "clone":
-                # Юзер оплатил клон — присылаем текст и переводим в состояние записи
+            if pending == "custom_text":
                 await bot.send_message(
                     user_id,
-                    "✅ <b>Оплата за клонирование прошла!</b>\n\n"
-                    "Теперь запиши голосовое сообщение (около 1 минуты), читая этот текст:\n\n"
-                    "<i>Привет. Меня зовут [имя]. Я записываю свой голос для создания персонального саблиминала. Я говорю спокойно и чётко.\n\n"
-                    "Сегодня хороший день. Я читаю этот текст, чтобы мой голос был узнаваемым. Один, два, три, четыре, пять, шесть, семь, восемь, девять, десять.\n\n"
-                    "Я люблю утро, когда солнце только встаёт. Я люблю вечер, когда становится тихо. Я люблю дождь, который стучит по крыше. Я люблю ветер, который шумит в листьях.\n\n"
-                    "Моя речь ровная и естественная. Я не тороплюсь. Я дышу спокойно. Я чувствую себя комфортно.\n\n"
-                    "Этот голос — мой. Он звучит так, как я говорю каждый день. Я читаю этот текст, чтобы мой голос был узнаваемым.\n\n"
-                    "Спасибо. Это был мой голос.</i>\n\n"
-                    "⚠️ Читай чётко, с выражением, не торопись.",
-                    parse_mode="HTML"
+                    "✅ Оплата прошла! Теперь напиши свой текст для саблиминала:",
                 )
-                
-                # Нормально ставим состояние
-                await state.set_state(SubliminalStates.waiting_for_voice_sample)
-                await state.update_data(voice_type="clone")
-                
+                await state.set_state(SubliminalStates.waiting_for_custom_text)
+
+            elif pending == "custom_topic_payment":
+                await bot.send_message(
+                    user_id,
+                    "✅ Оплата прошла! Теперь напиши свою тему:",
+                )
+                await state.set_state(SubliminalStates.waiting_for_custom_topic)
+
             else:
                 # Юзер оплатил обычный саб
                 await bot.send_message(
@@ -1569,8 +1606,6 @@ async def handle_yookassa_event(event: dict):
                 "✅ Разовая тема оплачена!\n\n"
                 "Можешь использовать её в боте."
             )
-
-        
 
     except Exception as e:
         logger.error(f"❌ Ошибка обработки вебхука: {e}")
