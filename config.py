@@ -21,18 +21,6 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 
-# === ЦЕНЫ ===
-PRICE_SUBLIMINAL = 150        # обычный саб (после бесплатного)
-PRICE_FIRST_CLONE = 1       # первый саб с клоном голоса
-PRICE_CLONE = 1           # последующие сабы с клоном
-
-# === АНТИСПАМ ===
-FREE_ANTISPAM = 30           # секунд между генерациями
-
-# ЮKassa
-YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
-YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
-
 # Fish Audio
 FISH_API_KEY = os.getenv("FISH_API_KEY")
 
