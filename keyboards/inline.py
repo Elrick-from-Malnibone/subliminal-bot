@@ -1,3 +1,9 @@
+Быстро копируй этот код и заменяй им весь свой файл `keyboards/inline.py`. Я добавил в самый верх нужные импорты, чтобы бот не падал.
+
+```python
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+
 def topics_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💰 Деньги", callback_data="topic_money"),
@@ -192,3 +198,4 @@ def feedback_keyboard():
             InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_voice"),
         ],
     ])
+```

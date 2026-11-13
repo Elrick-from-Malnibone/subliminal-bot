@@ -47,7 +47,7 @@ from keyboards.inline import (
 )
 from services.affirmations import get_affirmation
 import services.affirmations
-from services.tts import generate_voice
+from services.tts import generate_voice, clone_voice
 from services.deepseek import generate_affirmation
 from services.audio import create_subliminal
 
@@ -652,11 +652,10 @@ async def generate_subliminal_background(data: dict):
         if subliminal_path and os.path.exists(subliminal_path):
             await bot.send_audio(chat_id=chat_id, audio=FSInputFile(subliminal_path), title=data.get("subliminal_name", "Твой саблиминал"), caption="🎧 Сделано в @SubliminalGenBot")
             log_generation(user_id, data.get("source", "unknown"))
-            add_usage(user_id, data.get("requested_minutes", 0), data.get("is_custom_topic", False))
+            add_usage(user_id, data.get("length_minutes") or 0, data.get("is_custom_topic", False))
             if voice_path and os.path.exists(voice_path): os.remove(voice_path)
             if custom_track and os.path.exists(custom_track): os.remove(custom_track)
             
-            # Сжигаем флаг бесплатного саба, если он был
             if data.get("is_free_subliminal"):
                 mark_free_subliminal_used(user_id)
                 logger.info(f"🎁 Бесплатный саб использован: user_id={user_id}")
