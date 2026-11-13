@@ -5,10 +5,8 @@ import os
 import time
 import random
 
-# Хранилище путей к саблиминалам для публикации
 PENDING_PUBLICATIONS = {}
 
-# Логи в файл — ДО всех импортов
 LOG_FILE = os.path.join(os.getenv("DATA_DIR", "/app/data"), "bot.log")
 logging.basicConfig(
     level=logging.INFO,
@@ -23,6 +21,7 @@ logger = logging.getLogger(__name__)
 from aiogram.exceptions import TelegramBadRequest
 from config import (
     BOT_TOKEN, ADMIN_ID,
+    PRICE_SUBLIMINAL,
     FEEDBACK_CHAT_ID,
 )
 from aiogram import Bot, Dispatcher, types, F
@@ -32,36 +31,23 @@ from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.filters import CommandStart, Command
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from utils.db import (
-    init_db, add_user, log_generation, get_stats,
-    can_use_custom_topic, mark_custom_topic_used, get_all_users,
-    has_active_subscription, get_user_limits, get_today_usage,
-    check_limits, add_usage,
-    activate_subscription,
-    add_extra_custom_topics, use_extra_custom_topic,
-    save_voice_id, get_voice_id,
+    init_db, add_user, log_generation, get_stats, get_all_users,
+    add_usage, save_voice_id, get_voice_id,
     has_used_free_subliminal, mark_free_subliminal_used,
 )
+from services.payments import create_payment
 from aiogram_sqlite_storage.sqlitestore import SQLStorage
 from states.fsm import SubliminalStates
 from keyboards.inline import (
-    topics_keyboard,
-    voices_keyboard,
-    categories_keyboard,
-    affirmation_keyboard,
-    lengths_keyboard,
-    publish_keyboard,
-    publish_type_keyboard,
-    solfeggio_keyboard,
-    binaural_keyboard,
-    voice_tune_keyboard,
-    limit_keyboard,
-    donate_keyboard,
-    voices_keyboard_has_clone,
-    feedback_keyboard,
+    topics_keyboard, voices_keyboard, categories_keyboard,
+    affirmation_keyboard, lengths_keyboard, publish_keyboard,
+    publish_type_keyboard, solfeggio_keyboard, binaural_keyboard,
+    voice_tune_keyboard, limit_keyboard, donate_keyboard,
+    voices_keyboard_has_clone, feedback_keyboard,
 )
 from services.affirmations import get_affirmation
 import services.affirmations
-from services.tts import generate_voice, clone_voice
+from services.tts import generate_voice
 from services.deepseek import generate_affirmation
 from services.audio import create_subliminal
 
@@ -111,7 +97,6 @@ TOPICS = {
 }
 
 async def cleanup_output():
-    """Удаляет старые файлы из output/, audio/ и assets/user/ раз в 15 минут."""
     while True:
         await asyncio.sleep(900)
         for folder in ["/app/data/output", "/app/data/audio", "assets/user"]:
@@ -132,38 +117,48 @@ async def cleanup_output():
                 print(f"🧹 Чистка {folder}: удалено {removed} файлов")
 
 async def main():
-    print("=== MAIN STARTED ===", flush=True)
     init_db()
-    print("=== DB INITIALIZED ===", flush=True)
     asyncio.create_task(cleanup_output())
-    print("=== CLEANUP TASK STARTED ===", flush=True)
+
+    await bot.set_my_commands([
+        types.BotCommand(command="start", description="Начать"),
+        types.BotCommand(command="feedback", description="Отзывы и предложения"),
+        types.BotCommand(command="donate", description="Поддержать проект"),
+        types.BotCommand(command="help", description="Помощь"),
+    ])
 
     webhook_url = os.getenv("WEBHOOK_URL")
-    print(f"=== WEBHOOK_URL: {webhook_url} ===", flush=True)
 
     if webhook_url:
-        print("=== WEBHOOK MODE ===", flush=True)
         webhook_path = "/webhook"
         host = "0.0.0.0"
         port = int(os.getenv("PORT", 3000))
-        print(f"=== PORT: {port} ===", flush=True)
 
         app = web.Application()
         webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
         webhook_requests_handler.register(app, path=webhook_path)
         setup_application(app, dp, bot=bot)
 
+        async def yookassa_webhook(request):
+            try:
+                event = await request.json()
+                await handle_yookassa_event(event)
+            except Exception as e:
+                print(f"Ошибка обработки вебхука ЮKassa: {e}")
+            return web.Response(status=200)
+
+        app.router.add_post("/yookassa_webhook", yookassa_webhook)
+
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, host, port)
         await site.start()
-        print("=== SERVER STARTED ===", flush=True)
 
         await bot.set_webhook(f"{webhook_url}")
-        print("=== WEBHOOK SET ===", flush=True)
+        print(f"✅ Бот запущен на webhook: {webhook_url}")
         await asyncio.Event().wait()
     else:
-        print("=== POLLING MODE ===", flush=True)
+        print("Бот запущен в режиме polling.")
         await dp.start_polling(bot)
 
 @dp.message(CommandStart())
@@ -190,8 +185,7 @@ async def cmd_start(message: types.Message, state):
     if is_new:
         try:
             await bot.send_message(ADMIN_ID, f"🆕 Новый юзер: @{message.from_user.username or 'без_юзернейма'}\nID: {message.from_user.id}")
-        except Exception as e:
-            print(f"Не удалось отправить оповещение: {e}")
+        except Exception: pass
 
     user_id = message.from_user.id
     voice_id = get_voice_id(user_id)
@@ -222,7 +216,7 @@ async def cmd_stats(message: types.Message):
     await message.answer(
         f"📊 <b>Статистика бота</b>\n\n"
         f"👥 Всего юзеров: <b>{stats['total_users']}</b>\n"
-        f"🎧 Сгенерировано: <b>{stats['total_generations']}</b>\n"
+        f"🎧 Сгенерировано: <b>{stats['total_generations']}</b>\n\n"
         f"📦 Из пула: <b>{stats['from_pool']}</b>\n"
         f"🔧 Из строк: <b>{stats['from_strings']}</b>\n"
         f"🤖 Из Дипсика: <b>{stats['from_deepseek']}</b>\n"
@@ -279,15 +273,33 @@ async def handle_topic(call: types.CallbackQuery, state):
 
 @dp.callback_query(F.data == "topic_custom")
 async def handle_custom(call: types.CallbackQuery, state):
-    await call.message.edit_text("Напиши свой текст для саблиминала:")
+    user_id = call.from_user.id
+    from utils.db import set_pending_payment
+    set_pending_payment(user_id, "custom_text")
+    price = 150
+    payment = await asyncio.to_thread(create_payment, price, "Оплата своего текста", user_id, "subliminal")
+    if not payment:
+        await call.message.edit_text("❌ Не удалось создать платёж. Попробуй позже.")
+        await call.answer()
+        return
+    await call.message.edit_text(f"💳 Свой текст — {price} ₽.\n\nПерейди по ссылке для оплаты:\n{payment['confirmation_url']}\n\nПосле оплаты бот продолжит автоматически.", reply_markup=None)
     await call.answer()
     await state.set_state(SubliminalStates.waiting_for_custom_text)
 
 @dp.callback_query(F.data == "topic_custom_topic")
 async def handle_custom_topic(call: types.CallbackQuery, state):
-    await state.set_state(SubliminalStates.waiting_for_custom_topic)
-    await call.message.edit_text("🎯 Напиши свою тему:\n\nНапример:\n• хочу сдать экзамен\n• хочу наладить сон\n\nНейронка сгенерирует аффирмации.")
+    user_id = call.from_user.id
+    from utils.db import set_pending_payment
+    set_pending_payment(user_id, "custom_topic_payment")
+    price = 150
+    payment = await asyncio.to_thread(create_payment, price, "Оплата своей темы", user_id, "subliminal")
+    if not payment:
+        await call.message.edit_text("❌ Не удалось создать платёж. Попробуй позже.")
+        await call.answer()
+        return
+    await call.message.edit_text(f"💳 Своя тема — {price} ₽.\n\nПерейди по ссылке для оплаты:\n{payment['confirmation_url']}\n\nПосле оплаты бот продолжит автоматически.", reply_markup=None)
     await call.answer()
+    await state.set_state(SubliminalStates.waiting_for_custom_topic)
 
 @dp.message(SubliminalStates.waiting_for_custom_topic)
 async def handle_custom_topic_text(message: types.Message, state):
@@ -355,45 +367,83 @@ async def handle_ok(call: types.CallbackQuery, state):
 
 @dp.callback_query(SubliminalStates.choosing_voice, F.data.startswith("voice_"))
 async def handle_voice(call: types.CallbackQuery, state):
-    await state.update_data(voice_type=call.data.replace("voice_", ""), reference_id=None)
-    await call.message.edit_text("✅ Голос выбран. Теперь выбери тему саблиминала:", reply_markup=topics_keyboard())
-    await call.answer()
-    await state.set_state(SubliminalStates.waiting_for_topic)
+    voice_type = call.data.replace("voice_", "")
+    user_id = call.from_user.id
+    await state.update_data(voice_type=voice_type, reference_id=None)
+    from utils.db import set_pending_payment
+
+    if not has_used_free_subliminal(user_id):
+        await state.update_data(is_free_subliminal=True)
+        await call.message.edit_text("✅ Голос выбран. Это твой первый саб — он бесплатный!\n\nТеперь выбери тему саблиминала:", reply_markup=topics_keyboard())
+        await call.answer()
+        await state.set_state(SubliminalStates.waiting_for_topic)
+        return
+
+    await state.update_data(pending_payment_type="subliminal")
+    set_pending_payment(user_id, "subliminal")
+    price = PRICE_SUBLIMINAL
+    payment = await asyncio.to_thread(create_payment, price, "Оплата саблиминала", user_id, "subliminal")
+    if not payment:
+        await call.message.edit_text("❌ Не удалось создать платёж. Попробуй позже.")
+        await call.answer()
+        return
+    await call.message.edit_text(f"💳 Твой бесплатный саб уже использован.\n\nСледующий саб (любая тема на выбор) — {price} ₽.\nПерейди по ссылке для оплаты:\n{payment['confirmation_url']}\n\nПосле оплаты бот продолжит автоматически.", reply_markup=None)
+    await call.answer()  
 
 @dp.callback_query(F.data == "use_my_voice")
 async def handle_use_my_voice(call: types.CallbackQuery, state):
-    voice_id = get_voice_id(call.from_user.id)
+    user_id = call.from_user.id
+    voice_id = get_voice_id(user_id)
     if not voice_id:
-        await call.message.edit_text("❌ У тебя ещё нет клона.")
+        await call.message.edit_text("❌ У тебя ещё нет клона. Запиши голос сначала.")
         await call.answer()
         return
     await state.update_data(voice_type="clone", reference_id=voice_id)
-    await call.message.edit_text("✅ Голос выбран. Теперь выбери тему саблиминала:", reply_markup=topics_keyboard())
-    await call.answer()
-    await state.set_state(SubliminalStates.waiting_for_topic)
+    from utils.db import set_pending_payment
+    set_pending_payment(user_id, "subliminal")
+    price = PRICE_SUBLIMINAL
+    payment = await asyncio.to_thread(create_payment, price, "Оплата саблиминала", user_id, "subliminal")
+    if not payment:
+        await call.message.edit_text("❌ Не удалось создать платёж. Попробуй позже.")
+        await call.answer()
+        return
+    await call.message.edit_text(f"💳 Для создания саблиминала нужно оплатить {price} ₽.\n\nПерейди по ссылке для оплаты:\n{payment['confirmation_url']}\n\nПосле оплаты бот продолжит автоматически.", reply_markup=None)
+    await call.answer()    
 
 @dp.callback_query(F.data == "clone_voice")
 async def handle_clone_voice(call: types.CallbackQuery, state):
-    await call.message.edit_text("🎙 Запиши голосовое сообщение, читая этот текст...", parse_mode="HTML")
+    user_id = call.from_user.id
+    from utils.db import set_pending_payment
+    set_pending_payment(user_id, "clone")
+    price = 1
+    payment = await asyncio.to_thread(create_payment, price, "Создание клона голоса", user_id, "subliminal")
+    if not payment:
+        await call.message.edit_text("❌ Не удалось создать платёж. Попробуй позже.")
+        await call.answer()
+        return
+    await call.message.edit_text(f"💳 Для создания клона голоса нужно оплатить {price} ₽.\n\nПерейди по ссылке для оплаты:\n{payment['confirmation_url']}\n\nПосле оплаты я пришлю текст для чтения.", reply_markup=None)
     await call.answer()
-    await state.set_state(SubliminalStates.waiting_for_voice_sample)
 
 @dp.message(F.voice)
 async def handle_voice_sample(message: types.Message, state):
-    if await state.get_state() != SubliminalStates.waiting_for_voice_sample:
+    user_id = message.from_user.id
+    current_state = await state.get_state()
+    if current_state != SubliminalStates.waiting_for_voice_sample:
+        await message.answer("Чтобы записать голос, нажми /start и выбери «✨ Мой голос».")
         return
     status = await message.answer("⏳ Обрабатываю запись...")
     try:
-        file_info = await bot.get_file(message.voice.file_id)
+        file = message.voice
+        file_info = await bot.get_file(file.file_id)
         os.makedirs("/app/data/samples", exist_ok=True)
-        ogg_path = f"/app/data/samples/{message.from_user.id}_{int(time.time())}.ogg"
+        ogg_path = f"/app/data/samples/{user_id}_{int(time.time())}.ogg"
         await bot.download_file(file_info.file_path, ogg_path)
         from pydub import AudioSegment
         audio = AudioSegment.from_file(ogg_path)
         wav_path = ogg_path.replace(".ogg", ".wav")
         audio.export(wav_path, format="wav")
     except Exception as e:
-        await status.edit_text(f"❌ Ошибка: {e}")
+        await status.edit_text(f"❌ Ошибка обработки: {e}")
         return
     try:
         await status.edit_text("⏳ Создаю клон голоса...")
@@ -403,15 +453,19 @@ async def handle_voice_sample(message: types.Message, state):
     if os.path.exists(ogg_path): os.remove(ogg_path)
     if os.path.exists(wav_path): os.remove(wav_path)
     if not voice_id:
-        await status.edit_text("❌ Не удалось создать клон.")
+        await status.edit_text("❌ Не удалось создать клон. Попробуй позже.")
         await state.clear()
         return
-    save_voice_id(message.from_user.id, voice_id)
+    save_voice_id(user_id, voice_id)
     await status.edit_text("✅ <b>Клон готов!</b>\n\nСейчас пришлю тестовую озвучку.", parse_mode="HTML")
-    test_path = await generate_voice("Привет! Это мой клонированный голос.", reference_id=voice_id)
-    if test_path and os.path.exists(test_path):
-        await message.answer_audio(FSInputFile(test_path), title="Тест клона", caption="🎧 Послушай.")
-        os.remove(test_path)
+    test_audio_path = await generate_voice("Привет! Это мой клонированный голос. Теперь я могу озвучивать саблиминалы так.", reference_id=voice_id)
+    if test_audio_path and os.path.exists(test_audio_path):
+        await message.answer_audio(FSInputFile(test_audio_path), title="Тест клона", caption="🎧 Послушай, как звучит твой клон.")
+        os.remove(test_audio_path)
+    else:
+        await message.answer("⚠️ Не удалось сгенерировать тестовую озвучку, но клон сохранён.")
+    from utils.db import clear_pending_payment
+    clear_pending_payment(user_id)
     await message.answer("✅ Клон готов! Теперь выбери тему саблиминала:", reply_markup=topics_keyboard())
     await state.set_state(SubliminalStates.waiting_for_topic)
 
@@ -601,6 +655,12 @@ async def generate_subliminal_background(data: dict):
             add_usage(user_id, data.get("requested_minutes", 0), data.get("is_custom_topic", False))
             if voice_path and os.path.exists(voice_path): os.remove(voice_path)
             if custom_track and os.path.exists(custom_track): os.remove(custom_track)
+            
+            # Сжигаем флаг бесплатного саба, если он был
+            if data.get("is_free_subliminal"):
+                mark_free_subliminal_used(user_id)
+                logger.info(f"🎁 Бесплатный саб использован: user_id={user_id}")
+
             PENDING_PUBLICATIONS[user_id] = {"path": subliminal_path, "name": data.get("subliminal_name", "Твой саблиминал")}
             await bot.send_message(chat_id, "📢 <b>Хочешь опубликовать свой саблиминал в канале?</b>", parse_mode="HTML", reply_markup=publish_keyboard())
         else:
@@ -664,6 +724,39 @@ async def back_to_publish(call: types.CallbackQuery, state):
 @dp.message(F.text.in_(["/feedback", "/отзыв", "/фидбек"]))
 async def cmd_feedback(message: types.Message, state):
     await message.answer("💬 Отзыв, жалобы, предложения сюда -> @SubliminalReviews", parse_mode="HTML")
+
+async def handle_yookassa_event(event: dict):
+    try:
+        event_type = event.get("event")
+        payment_obj = event.get("object", {})
+        if event_type != "payment.succeeded": return
+
+        metadata = payment_obj.get("metadata", {})
+        user_id = metadata.get("user_id")
+        payment_type = metadata.get("payment_type")
+        if not user_id or not payment_type: return
+        user_id = int(user_id)
+
+        if payment_type == "donation":
+            await bot.send_message(user_id, "💝 Спасибо за поддержку! Ты делаешь проект лучше.")
+            await bot.send_message(ADMIN_ID, f"💝 Донат: user_id={user_id}")
+        elif payment_type == "subliminal":
+            from utils.db import get_pending_payment, clear_pending_payment
+            pending = get_pending_payment(user_id)
+            state = dp.fsm.get_context(bot=bot, chat_id=user_id, user_id=user_id)
+
+            if pending == "custom_text":
+                await bot.send_message(user_id, "✅ Оплата прошла! Теперь напиши свой текст для саблиминала:")
+                await state.set_state(SubliminalStates.waiting_for_custom_text)
+            elif pending == "custom_topic_payment":
+                await bot.send_message(user_id, "✅ Оплата прошла! Теперь напиши свою тему:")
+                await state.set_state(SubliminalStates.waiting_for_custom_topic)
+            else:
+                await bot.send_message(user_id, "✅ Оплата прошла! Теперь выбери тему саблиминала:", reply_markup=topics_keyboard())
+                await state.set_state(SubliminalStates.waiting_for_topic)
+            clear_pending_payment(user_id)
+    except Exception as e:
+        logger.error(f"❌ Ошибка обработки вебхука: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
