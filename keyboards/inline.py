@@ -19,7 +19,6 @@ def topics_keyboard():
 
 
 def voices_keyboard():
-    """Клавиатура выбора голоса (без клона)."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🎙 Мужской обычный", callback_data="voice_male_1"),
@@ -35,7 +34,6 @@ def voices_keyboard():
     ])
 
 def voices_keyboard_has_clone():
-    """Клавиатура выбора голоса, если клон уже есть (кнопка клона убрана)."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🎙 Мужской обычный", callback_data="voice_male_1"),
@@ -52,7 +50,6 @@ def voices_keyboard_has_clone():
 
 
 def categories_keyboard():
-    """Клавиатура выбора категории трека."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🌌 Эмбиент", callback_data="cat_Эмбиент"),
@@ -75,7 +72,6 @@ def categories_keyboard():
     ])
 
 def affirmation_keyboard():
-    """Клавиатура после генерации текста."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🔄 Перегенерить", callback_data="affirm_regen"),
@@ -102,7 +98,6 @@ def lengths_keyboard():
     ])
 
 def publish_keyboard():
-    """Клавиатура после генерации саблиминала — предложение опубликовать."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="📢 Опубликовать в канал", callback_data="publish_yes"),
@@ -114,7 +109,6 @@ def publish_keyboard():
 
 
 def publish_type_keyboard():
-    """Клавиатура выбора типа публикации."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🕶 Анонимно", callback_data="pub_anon"),
@@ -128,7 +122,6 @@ def publish_type_keyboard():
     ])
 
 def solfeggio_keyboard():
-    """Клавиатура выбора сольфеджио-частоты."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="528 Гц — любовь и исцеление", callback_data="sol_528")],
         [InlineKeyboardButton(text="432 Гц — гармония и баланс", callback_data="sol_432")],
@@ -140,7 +133,6 @@ def solfeggio_keyboard():
 
 
 def binaural_keyboard():
-    """Клавиатура выбора бинаурального ритма."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Альфа 10 Гц — расслабление и творчество", callback_data="bin_alpha")],
         [InlineKeyboardButton(text="Тета 6 Гц — медитация и сон", callback_data="bin_theta")],
@@ -150,7 +142,6 @@ def binaural_keyboard():
     ])
 
 def voice_tune_keyboard():
-    """Клавиатура настройки громкости голоса."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🔉 Тише", callback_data="voice_down"),
@@ -162,7 +153,6 @@ def voice_tune_keyboard():
     ])
 
 def limit_keyboard():
-    """Клавиатура при необходимости оплаты (упрощенная)."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_topic"),
@@ -170,7 +160,6 @@ def limit_keyboard():
     ])
 
 def donate_keyboard():
-    """Клавиатура доната."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="💝 100 ₽", callback_data="donate_100"),
@@ -186,7 +175,6 @@ def donate_keyboard():
     ])
 
 def feedback_keyboard():
-    """Клавиатура для обратной связи."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="💬 Написать отзыв", callback_data="feedback_start"),
@@ -195,4 +183,3 @@ def feedback_keyboard():
             InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_voice"),
         ],
     ])
-```
